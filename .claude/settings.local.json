@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:gitlab.gnome.org)",
+      "WebFetch(domain:docs.gtk.org)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:www.freedesktop.org)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

@@ -1,0 +1,42 @@
+# Config file (contains sensitive data like passwords)
+config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+*.whl
+.Python
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Test files
+test_config.json
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Coverage and testing
+.coverage
+.pytest_cache/
+htmlcov/
+
+# Logs
+*.log

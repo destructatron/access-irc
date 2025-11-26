@@ -1,0 +1,44 @@
+{
+  "nickname": "IRCUser",
+  "realname": "Access IRC User",
+  "servers": [
+    {
+      "name": "Libera.Chat",
+      "host": "irc.libera.chat",
+      "port": 6667,
+      "ssl": false,
+      "verify_ssl": true,
+      "channels": [
+        "#python",
+        "#linux"
+      ],
+      "username": "",
+      "password": "",
+      "sasl": false
+    },
+    {
+      "name": "ZNC Bouncer Example",
+      "host": "bouncer.example.com",
+      "port": 6697,
+      "ssl": true,
+      "verify_ssl": false,
+      "channels": [],
+      "username": "myuser/libera",
+      "password": "mypassword",
+      "sasl": false
+    }
+  ],
+  "sounds": {
+    "enabled": true,
+    "mention": "sounds/mention.wav",
+    "message": "sounds/message.wav",
+    "notice": "sounds/notice.wav",
+    "join": "sounds/join.wav",
+    "part": "sounds/part.wav"
+  },
+  "ui": {
+    "announce_all_messages": false,
+    "announce_mentions_only": true,
+    "announce_joins_parts": false
+  }
+}
