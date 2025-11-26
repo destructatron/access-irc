@@ -220,7 +220,3 @@ This allows you to make changes to the code without reinstalling the package.
 ## Contributing
 
 Contributions are welcome. Please test accessibility features thoroughly and follow the existing code style. See `CLAUDE.md` for development guidelines.
-
-## License
-
-GNU General Public License v3.0 (GPL-3.0)
