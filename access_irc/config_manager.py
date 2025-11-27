@@ -24,6 +24,7 @@ class ConfigManager:
             "part": "sounds/part.wav"
         },
         "ui": {
+            "show_timestamps": True,
             "announce_all_messages": False,
             "announce_mentions_only": True,
             "announce_joins_parts": False
@@ -227,6 +228,10 @@ class ConfigManager:
     def should_announce_joins_parts(self) -> bool:
         """Check if joins/parts should be announced"""
         return self.config.get("ui", {}).get("announce_joins_parts", False)
+
+    def should_show_timestamps(self) -> bool:
+        """Check if timestamps should be shown in messages"""
+        return self.config.get("ui", {}).get("show_timestamps", True)
 
 
 if __name__ == "__main__":

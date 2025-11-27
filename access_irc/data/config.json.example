@@ -37,6 +37,7 @@
     "part": "sounds/part.wav"
   },
   "ui": {
+    "show_timestamps": true,
     "announce_all_messages": false,
     "announce_mentions_only": true,
     "announce_joins_parts": false

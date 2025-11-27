@@ -55,6 +55,9 @@ class PreferencesDialog(Gtk.Dialog):
         # User Settings tab
         notebook.append_page(self._create_user_tab(), Gtk.Label(label="User"))
 
+        # Chat tab
+        notebook.append_page(self._create_chat_tab(), Gtk.Label(label="Chat"))
+
         # Sounds tab
         notebook.append_page(self._create_sounds_tab(), Gtk.Label(label="Sounds"))
 
@@ -94,6 +97,26 @@ class PreferencesDialog(Gtk.Dialog):
         grid.attach(label, 0, row, 1, 1)
         grid.attach(self.realname_entry, 1, row, 1, 1)
         row += 1
+
+        return box
+
+    def _create_chat_tab(self) -> Gtk.Box:
+        """Create chat settings tab"""
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_border_width(12)
+
+        # Display preferences
+        label = Gtk.Label(label="<b>Display Preferences</b>")
+        label.set_use_markup(True)
+        label.set_halign(Gtk.Align.START)
+        box.pack_start(label, False, False, 0)
+
+        # Show timestamps
+        self.show_timestamps = Gtk.CheckButton.new_with_mnemonic(
+            "Show _timestamps in messages"
+        )
+        box.pack_start(self.show_timestamps, False, False, 0)
 
         return box
 
@@ -187,6 +210,8 @@ class PreferencesDialog(Gtk.Dialog):
         )
         box.pack_start(self.announce_joins_parts, False, False, 0)
 
+        box.pack_start(Gtk.Separator(), False, False, 6)
+
         # Info label
         info = Gtk.Label()
         info.set_markup(
@@ -224,6 +249,9 @@ class PreferencesDialog(Gtk.Dialog):
 
         self.announce_joins_parts.set_active(self.config.should_announce_joins_parts())
 
+        # Display settings
+        self.show_timestamps.set_active(self.config.should_show_timestamps())
+
     def _save_preferences(self) -> None:
         """Save preferences"""
 
@@ -246,6 +274,7 @@ class PreferencesDialog(Gtk.Dialog):
         announce_mentions = self.announce_mentions.get_active()
 
         self.config.set("ui", {
+            "show_timestamps": self.show_timestamps.get_active(),
             "announce_all_messages": announce_all,
             "announce_mentions_only": announce_mentions,
             "announce_joins_parts": self.announce_joins_parts.get_active()

@@ -379,13 +379,18 @@ class AccessibleIRCWindow(Gtk.Window):
 
         buffer = self.message_buffers[key]
 
-        # Format message with timestamp
-        timestamp = datetime.now().strftime("%H:%M:%S")
-
-        if is_system:
-            formatted = f"[{timestamp}] * {message}\n"
+        # Format message with timestamp (if enabled)
+        if self.config_manager.should_show_timestamps():
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            if is_system:
+                formatted = f"[{timestamp}] * {message}\n"
+            else:
+                formatted = f"[{timestamp}] <{sender}> {message}\n"
         else:
-            formatted = f"[{timestamp}] <{sender}> {message}\n"
+            if is_system:
+                formatted = f"* {message}\n"
+            else:
+                formatted = f"<{sender}> {message}\n"
 
         # Add to buffer at the end (not at cursor position)
         end_iter = buffer.get_end_iter()
@@ -448,9 +453,12 @@ class AccessibleIRCWindow(Gtk.Window):
 
         buffer = self.message_buffers[key]
 
-        # Format action message with timestamp
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted = f"[{timestamp}] * {sender} {action}\n"
+        # Format action message with timestamp (if enabled)
+        if self.config_manager.should_show_timestamps():
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            formatted = f"[{timestamp}] * {sender} {action}\n"
+        else:
+            formatted = f"* {sender} {action}\n"
 
         # Add to buffer at the end
         end_iter = buffer.get_end_iter()
@@ -486,9 +494,12 @@ class AccessibleIRCWindow(Gtk.Window):
 
         buffer = self.message_buffers[key]
 
-        # Format notice message with timestamp
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        formatted = f"[{timestamp}] -{sender}- {message}\n"
+        # Format notice message with timestamp (if enabled)
+        if self.config_manager.should_show_timestamps():
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            formatted = f"[{timestamp}] -{sender}- {message}\n"
+        else:
+            formatted = f"-{sender}- {message}\n"
 
         # Add to buffer at the end
         end_iter = buffer.get_end_iter()
