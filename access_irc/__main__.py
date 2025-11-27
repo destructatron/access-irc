@@ -172,26 +172,42 @@ class AccessIRCApplication:
         if reason:
             message += f" ({reason})"
 
-        # Add to all channels on this server
-        # Note: We'd need to track which channels the user was in
-        # For now, just log it to the server buffer
-        self.window.add_system_message(server, server, message)
+        # Add to all channels where this user was present
+        connection = self.irc.connections.get(server)
+        if connection:
+            # Iterate through all channels and check if user was in them
+            for channel in connection.channel_users:
+                if nick in connection.channel_users[channel]:
+                    self.window.add_system_message(server, channel, message)
 
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
+
+        # Announce if configured
+        if self.config.should_announce_joins_parts():
+            self.window.announce_to_screen_reader(message)
 
     def on_irc_nick(self, server: str, old_nick: str, new_nick: str) -> None:
         """Handle nick change"""
         message = f"{old_nick} is now known as {new_nick}"
 
-        # Add to all channels on this server
-        # For now, just log it to the server buffer
-        self.window.add_system_message(server, server, message)
+        # Add to all channels where this user is present
+        connection = self.irc.connections.get(server)
+        if connection:
+            # Iterate through all channels and check if user is in them
+            # Note: The user has already been renamed in channel_users by the IRC manager
+            for channel in connection.channel_users:
+                if new_nick in connection.channel_users[channel]:
+                    self.window.add_system_message(server, channel, message)
 
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
+
+        # Announce if configured
+        if self.config.should_announce_joins_parts():
+            self.window.announce_to_screen_reader(message)
 
     def on_irc_names(self, server: str, channel: str, users: list) -> None:
         """
