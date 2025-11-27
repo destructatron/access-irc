@@ -329,5 +329,8 @@ class PreferencesDialog(Gtk.Dialog):
         if response_id in (Gtk.ResponseType.OK, Gtk.ResponseType.APPLY):
             self._save_preferences()
 
-        if response_id == Gtk.ResponseType.OK:
+        if response_id == Gtk.ResponseType.APPLY:
+            # Prevent dialog from closing on Apply
+            self.stop_emission_by_name("response")
+        elif response_id == Gtk.ResponseType.OK:
             self.destroy()
