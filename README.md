@@ -43,7 +43,7 @@ sudo apt install python3 python3-pip python3-venv \
 
 **Fedora:**
 ```bash
-sudo dnf install python3 python3-pip \
+sudo dnf install python3 python3-devel python3-pip \
   gobject-introspection-devel cairo-devel pkg-config gtk3 at-spi2-core gcc \
   gstreamer1-plugins-base gstreamer1-plugins-good
 ```
