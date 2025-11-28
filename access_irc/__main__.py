@@ -24,7 +24,7 @@ class AccessIRCApplication:
         """Initialize application"""
 
         # Initialize managers
-        self.config = ConfigManager("config.json")
+        self.config = ConfigManager()  # Uses ~/.config/access-irc/config.json by default
         self.sound = SoundManager(self.config)
 
         # Create IRC callbacks

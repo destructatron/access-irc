@@ -6,6 +6,8 @@ Handles loading and saving configuration in JSON format
 
 import json
 import os
+import shutil
+from pathlib import Path
 from typing import Dict, List, Any, Optional
 
 
@@ -35,14 +37,21 @@ class ConfigManager:
         }
     }
 
-    def __init__(self, config_path: str = "config.json"):
+    def __init__(self, config_path: Optional[str] = None):
         """
         Initialize config manager
 
         Args:
-            config_path: Path to the configuration file
+            config_path: Path to the configuration file (defaults to ~/.config/access-irc/config.json)
         """
-        self.config_path = config_path
+        if config_path is None:
+            # Use XDG config directory
+            config_dir = Path.home() / ".config" / "access-irc"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            self.config_path = str(config_dir / "config.json")
+        else:
+            self.config_path = config_path
+
         self.config = self._load_config()
 
     def _load_config(self) -> Dict[str, Any]:
@@ -63,9 +72,46 @@ class ConfigManager:
                 print("Using default configuration")
                 return self.DEFAULT_CONFIG.copy()
         else:
-            # Create default config file
+            # Try to copy example config if it exists
+            example_config = self._find_example_config()
+            if example_config and os.path.exists(example_config):
+                try:
+                    shutil.copy(example_config, self.config_path)
+                    print(f"Created config from example: {self.config_path}")
+                    with open(self.config_path, 'r') as f:
+                        config = json.load(f)
+                    return self._merge_with_defaults(config)
+                except (IOError, json.JSONDecodeError) as e:
+                    print(f"Error copying example config: {e}")
+
+            # Fallback: create default config file
             self.save_config(self.DEFAULT_CONFIG)
             return self.DEFAULT_CONFIG.copy()
+
+    def _find_example_config(self) -> Optional[str]:
+        """
+        Find the example config file location
+
+        Checks for PyInstaller bundle (sys._MEIPASS) and source directory
+
+        Returns:
+            Path to example config or None if not found
+        """
+        import sys
+
+        # Check if running from PyInstaller bundle
+        if getattr(sys, '_MEIPASS', None):
+            example_path = Path(sys._MEIPASS) / "access_irc" / "data" / "config.json.example"
+            if example_path.exists():
+                return str(example_path)
+
+        # Check relative to this file (for source installation)
+        module_dir = Path(__file__).parent
+        example_path = module_dir / "data" / "config.json.example"
+        if example_path.exists():
+            return str(example_path)
+
+        return None
 
     def _merge_with_defaults(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
