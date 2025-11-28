@@ -31,11 +31,13 @@
   ],
   "sounds": {
     "enabled": true,
-    "mention": "sounds/mention.wav",
-    "message": "sounds/message.wav",
-    "notice": "sounds/notice.wav",
-    "join": "sounds/join.wav",
-    "part": "sounds/part.wav"
+    "mention": "access_irc/data/sounds/mention.wav",
+    "message": "access_irc/data/sounds/message.wav",
+    "privmsg": "access_irc/data/sounds/privmsg.wav",
+    "notice": "access_irc/data/sounds/notice.wav",
+    "join": "access_irc/data/sounds/join.wav",
+    "part": "access_irc/data/sounds/part.wav",
+    "quit": "access_irc/data/sounds/quit.wav"
   },
   "ui": {
     "show_timestamps": true,

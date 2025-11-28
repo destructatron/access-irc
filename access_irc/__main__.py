@@ -90,7 +90,7 @@ class AccessIRCApplication:
         self.window.update_status(f"Disconnected from {server_name}")
         self.window.remove_server_from_tree(server_name)
 
-    def on_irc_message(self, server: str, channel: str, sender: str, message: str, is_mention: bool) -> None:
+    def on_irc_message(self, server: str, channel: str, sender: str, message: str, is_mention: bool, is_private: bool) -> None:
         """Handle incoming IRC message"""
         self.window.add_message(server, channel, sender, message, is_mention=is_mention)
 
@@ -99,13 +99,28 @@ class AccessIRCApplication:
         if not channel.startswith("#"):
             self.window.add_pm_to_tree(server, channel)
 
-    def on_irc_action(self, server: str, channel: str, sender: str, action: str) -> None:
+        # Play appropriate sound
+        if self.sound:
+            if is_private:
+                self.sound.play_privmsg()
+            elif not is_mention:
+                # Only play message sound if it's not a mention (mentions have their own sound)
+                self.sound.play_message()
+
+    def on_irc_action(self, server: str, channel: str, sender: str, action: str, is_private: bool) -> None:
         """Handle incoming IRC action (/me)"""
         self.window.add_action_message(server, channel, sender, action)
 
         # If this is a PM (channel doesn't start with #), add it to the tree
         if not channel.startswith("#"):
             self.window.add_pm_to_tree(server, channel)
+
+        # Play appropriate sound
+        if self.sound:
+            if is_private:
+                self.sound.play_privmsg()
+            else:
+                self.sound.play_message()
 
     def on_irc_notice(self, server: str, channel: str, sender: str, message: str) -> None:
         """Handle incoming IRC notice"""
@@ -179,6 +194,10 @@ class AccessIRCApplication:
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
+
+        # Play quit sound
+        if self.sound:
+            self.sound.play_quit()
 
         # Announce if configured
         if self.config.should_announce_joins_parts():

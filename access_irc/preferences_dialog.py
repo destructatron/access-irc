@@ -155,9 +155,11 @@ class PreferencesDialog(Gtk.Dialog):
         for sound_type, label_text in [
             ("mention", "_Mention sound:"),
             ("message", "M_essage sound:"),
+            ("privmsg", "_Private message sound:"),
             ("notice", "_Notice sound:"),
             ("join", "_Join sound:"),
-            ("part", "_Part sound:")
+            ("part", "_Part sound:"),
+            ("quit", "_Quit sound:")
         ]:
             label = Gtk.Label.new_with_mnemonic(label_text)
             label.set_halign(Gtk.Align.END)
@@ -276,9 +278,11 @@ class PreferencesDialog(Gtk.Dialog):
             "enabled": self.sounds_enabled.get_active(),
             "mention": self.sound_entries["mention"].get_text(),
             "message": self.sound_entries["message"].get_text(),
+            "privmsg": self.sound_entries["privmsg"].get_text(),
             "notice": self.sound_entries["notice"].get_text(),
             "join": self.sound_entries["join"].get_text(),
-            "part": self.sound_entries["part"].get_text()
+            "part": self.sound_entries["part"].get_text(),
+            "quit": self.sound_entries["quit"].get_text()
         })
 
         # Accessibility settings

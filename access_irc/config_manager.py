@@ -19,10 +19,13 @@ class ConfigManager:
         "servers": [],
         "sounds": {
             "enabled": True,
-            "mention": "sounds/mention.wav",
-            "message": "sounds/message.wav",
-            "join": "sounds/join.wav",
-            "part": "sounds/part.wav"
+            "mention": "access_irc/data/sounds/mention.wav",
+            "message": "access_irc/data/sounds/message.wav",
+            "privmsg": "access_irc/data/sounds/privmsg.wav",
+            "notice": "access_irc/data/sounds/notice.wav",
+            "join": "access_irc/data/sounds/join.wav",
+            "part": "access_irc/data/sounds/part.wav",
+            "quit": "access_irc/data/sounds/quit.wav"
         },
         "ui": {
             "show_timestamps": True,
@@ -219,7 +222,7 @@ class ConfigManager:
         Get path to sound file
 
         Args:
-            sound_type: Type of sound (mention, message, join, part)
+            sound_type: Type of sound (mention, message, privmsg, notice, join, part, quit)
 
         Returns:
             Path to sound file or None if not configured

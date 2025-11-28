@@ -54,7 +54,7 @@ class SoundManager:
         if not self.initialized:
             return
 
-        sound_types = ["mention", "message", "notice", "join", "part"]
+        sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit"]
 
         for sound_type in sound_types:
             sound_path = self.config.get_sound_path(sound_type)
@@ -107,7 +107,7 @@ class SoundManager:
         Play a sound notification
 
         Args:
-            sound_type: Type of sound to play (mention, message, notice, join, part)
+            sound_type: Type of sound to play (mention, message, privmsg, notice, join, part, quit)
         """
         if not self.initialized or not self.config.are_sounds_enabled():
             return
@@ -141,6 +141,14 @@ class SoundManager:
     def play_notice(self) -> None:
         """Play notice sound"""
         self.play("notice")
+
+    def play_privmsg(self) -> None:
+        """Play private message sound"""
+        self.play("privmsg")
+
+    def play_quit(self) -> None:
+        """Play user quit sound"""
+        self.play("quit")
 
     def reload_sounds(self) -> None:
         """Reload sound files (useful after config changes)"""

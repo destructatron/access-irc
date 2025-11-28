@@ -5,6 +5,7 @@ Handles multiple IRC server connections using miniirc
 """
 
 import threading
+from datetime import datetime
 from typing import Dict, Callable, Optional, List, Any
 from gi.repository import GLib
 
@@ -142,7 +143,8 @@ class IRCConnection:
                     self.server_name,
                     channel,
                     sender,
-                    action
+                    action,
+                    is_private
                 )
             else:
                 # Regular message
@@ -157,7 +159,8 @@ class IRCConnection:
                     channel,
                     sender,
                     message,
-                    is_mention
+                    is_mention,
+                    is_private
                 )
 
         def on_join(irc, hostmask, args):
@@ -401,7 +404,9 @@ class IRCConnection:
                 message = f"WHOIS {nick}: idle {idle_str}"
                 if len(args) >= 4:
                     # Add signon time if available
-                    message += f", signed on at {args[3]}"
+                    signon_timestamp = int(args[3])
+                    signon_date = datetime.fromtimestamp(signon_timestamp).strftime("%Y-%m-%d %H:%M:%S")
+                    message += f", signed on at {signon_date}"
 
                 GLib.idle_add(
                     self._call_callback,

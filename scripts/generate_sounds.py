@@ -103,9 +103,11 @@ def main():
     # Generate different tones for different events
     generate_beep(800, 0.2, os.path.join(sounds_dir, "mention.wav"))     # High pitch for mentions
     generate_beep(600, 0.15, os.path.join(sounds_dir, "message.wav"))    # Medium pitch for messages
+    generate_two_tone(700, 850, 0.3, os.path.join(sounds_dir, "privmsg.wav"))  # Distinctive two-tone for private messages
     generate_two_tone(650, 800, 0.25, os.path.join(sounds_dir, "notice.wav"))  # Two-tone chirp for notices
     generate_beep(500, 0.1, os.path.join(sounds_dir, "join.wav"))        # Lower pitch for joins
-    generate_beep(400, 0.1, os.path.join(sounds_dir, "part.wav"))        # Lowest pitch for parts
+    generate_beep(400, 0.1, os.path.join(sounds_dir, "part.wav"))        # Lower pitch for parts
+    generate_two_tone(450, 350, 0.2, os.path.join(sounds_dir, "quit.wav"))  # Descending tone for quits
 
     print(f"\nSound files generated successfully in {sounds_dir}")
     print("You can replace these with your own sound files if desired.")
