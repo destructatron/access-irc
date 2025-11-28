@@ -78,11 +78,18 @@ class IRCConnection:
             return False
 
         try:
-            # Prepare server password for ZNC authentication
+            # Prepare authentication based on SASL setting
             server_password = None
+            ns_identity = None
+
             if self.username and self.password:
-                # ZNC style: username:password
-                server_password = f"{self.username}:{self.password}"
+                if self.use_sasl:
+                    # SASL authentication (NickServ)
+                    # miniirc expects a tuple: (username, password)
+                    ns_identity = (self.username, self.password)
+                else:
+                    # Bouncer authentication (ZNC style: username:password)
+                    server_password = f"{self.username}:{self.password}"
 
             # Create IRC instance
             self.irc = miniirc.IRC(
@@ -97,7 +104,8 @@ class IRCConnection:
                 auto_connect=False,
                 ping_interval=60,
                 persist=True,
-                server_password=server_password
+                server_password=server_password,
+                ns_identity=ns_identity
             )
 
             # Register handlers

@@ -119,9 +119,15 @@ Config is stored in `config.json` (created from `config.json.example` on first r
 - `ssl`: Enable SSL/TLS connection
 - `verify_ssl`: Verify SSL certificates (set to `false` for self-signed certs)
 - `channels`: List of channels to auto-join (leave empty for bouncers)
-- `username`: Authentication username (for bouncers: `username/network`)
-- `password`: Server/bouncer password
-- `sasl`: Enable SASL authentication (future feature)
+- `username`: Authentication username
+  - For SASL (when `sasl: true`): NickServ account username
+  - For bouncers (when `sasl: false`): Use format `username/network` for ZNC
+- `password`: Authentication password
+  - For SASL: NickServ account password
+  - For bouncers: Server/bouncer password
+- `sasl`: Enable SASL authentication for NickServ
+  - Set to `true` for direct IRC server connections with NickServ authentication
+  - Set to `false` for bouncer connections (ZNC, etc.)
 
 **Important**:
 - Server configs should NOT include `nickname` or `realname` fields - they automatically inherit from global config
@@ -171,11 +177,25 @@ Users can specify custom paths in Preferences, and `reload_sounds()` will reload
 
 ### Authentication and SSL
 
+The application supports two authentication methods that are **mutually exclusive**:
+
+**SASL Authentication** (for NickServ on direct IRC connections):
+- Use the `ns_identity` parameter in `miniirc.IRC()` for SASL/NickServ authentication
+- Format: `ns_identity=(username, password)` as a tuple
+- Example: `ns_identity=("myuser", "mypassword")`
+- Enabled when `sasl: true` in server config
+- miniirc automatically adds SASL to IRCv3 capabilities when `ns_identity` is specified
+- Best for direct connections to IRC networks with NickServ (Libera.Chat, OFTC, etc.)
+
 **Server Password Authentication** (for bouncers like ZNC):
 - Use the `server_password` parameter in `miniirc.IRC()` to send the PASS command
 - Format for ZNC: `username:password` or `username/network:password`
 - Example: `server_password="myuser/libera:mypassword"`
+- Enabled when `sasl: false` in server config
 - This sends `PASS username/network:password` before NICK/USER commands
+- Best for bouncer connections (ZNC, etc.)
+
+**Important**: Do NOT enable SASL for bouncer connections - use `sasl: false` and provide bouncer credentials in `username`/`password` fields.
 
 **SSL Certificate Verification**:
 - Use the `verify_ssl` parameter in `miniirc.IRC()` to control certificate verification
