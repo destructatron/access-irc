@@ -98,6 +98,16 @@ class PreferencesDialog(Gtk.Dialog):
         grid.attach(self.realname_entry, 1, row, 1, 1)
         row += 1
 
+        # Quit message
+        label = Gtk.Label.new_with_mnemonic("_Quit message:")
+        label.set_halign(Gtk.Align.END)
+        self.quit_message_entry = Gtk.Entry()
+        self.quit_message_entry.set_placeholder_text("Message shown when disconnecting")
+        label.set_mnemonic_widget(self.quit_message_entry)
+        grid.attach(label, 0, row, 1, 1)
+        grid.attach(self.quit_message_entry, 1, row, 1, 1)
+        row += 1
+
         return box
 
     def _create_chat_tab(self) -> Gtk.Box:
@@ -230,6 +240,7 @@ class PreferencesDialog(Gtk.Dialog):
         # User settings
         self.nickname_entry.set_text(self.config.get_nickname())
         self.realname_entry.set_text(self.config.get_realname())
+        self.quit_message_entry.set_text(self.config.get_quit_message())
 
         # Sound settings
         self.sounds_enabled.set_active(self.config.are_sounds_enabled())
@@ -258,6 +269,7 @@ class PreferencesDialog(Gtk.Dialog):
         # User settings
         self.config.set_nickname(self.nickname_entry.get_text().strip())
         self.config.set_realname(self.realname_entry.get_text().strip())
+        self.config.set_quit_message(self.quit_message_entry.get_text().strip())
 
         # Sound settings
         self.config.set("sounds", {

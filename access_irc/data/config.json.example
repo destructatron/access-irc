@@ -1,6 +1,7 @@
 {
   "nickname": "IRCUser",
   "realname": "Access IRC User",
+  "quit_message": "Access IRC - Leaving",
   "servers": [
     {
       "name": "Libera.Chat",

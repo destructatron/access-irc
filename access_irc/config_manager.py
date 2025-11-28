@@ -15,6 +15,7 @@ class ConfigManager:
     DEFAULT_CONFIG = {
         "nickname": "IRCUser",
         "realname": "Access IRC User",
+        "quit_message": "Access IRC - Leaving",
         "servers": [],
         "sounds": {
             "enabled": True,
@@ -198,6 +199,15 @@ class ConfigManager:
     def set_realname(self, realname: str) -> None:
         """Set real name and save"""
         self.config["realname"] = realname
+        self.save_config()
+
+    def get_quit_message(self) -> str:
+        """Get configured quit message"""
+        return self.config.get("quit_message", "Access IRC - Leaving")
+
+    def set_quit_message(self, quit_message: str) -> None:
+        """Set quit message and save"""
+        self.config["quit_message"] = quit_message
         self.save_config()
 
     def are_sounds_enabled(self) -> bool:

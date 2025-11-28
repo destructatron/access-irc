@@ -166,19 +166,15 @@ class AccessIRCApplication:
         if self.config.should_announce_joins_parts():
             self.window.announce_to_screen_reader(message)
 
-    def on_irc_quit(self, server: str, nick: str, reason: str) -> None:
+    def on_irc_quit(self, server: str, nick: str, reason: str, channels: list) -> None:
         """Handle user quit"""
         message = f"{nick} has quit"
         if reason:
             message += f" ({reason})"
 
         # Add to all channels where this user was present
-        connection = self.irc.connections.get(server)
-        if connection:
-            # Iterate through all channels and check if user was in them
-            for channel in connection.channel_users:
-                if nick in connection.channel_users[channel]:
-                    self.window.add_system_message(server, channel, message)
+        for channel in channels:
+            self.window.add_system_message(server, channel, message)
 
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
@@ -258,8 +254,9 @@ class AccessIRCApplication:
 
     def on_window_destroy(self, widget) -> None:
         """Handle window destruction"""
-        # Disconnect all servers
-        self.irc.disconnect_all("Client exiting")
+        # Disconnect all servers with configured quit message
+        quit_message = self.config.get_quit_message()
+        self.irc.disconnect_all(quit_message)
 
         # Cleanup sound
         self.sound.cleanup()

@@ -1090,7 +1090,8 @@ class AccessibleIRCWindow(Gtk.Window):
     def on_disconnect_server(self, widget) -> None:
         """Disconnect from current server"""
         if self.current_server and self.irc_manager:
-            self.irc_manager.disconnect_server(self.current_server)
+            quit_message = self.config_manager.get_quit_message() if self.config_manager else "Leaving"
+            self.irc_manager.disconnect_server(self.current_server, quit_message)
 
     def on_manage_servers(self, widget) -> None:
         """Show server management dialog"""
@@ -1322,9 +1323,10 @@ class AccessibleIRCWindow(Gtk.Window):
 
     def on_quit(self, widget) -> None:
         """Quit application"""
-        # Disconnect all servers
+        # Disconnect all servers with configured quit message
         if self.irc_manager:
-            self.irc_manager.disconnect_all("Client exiting")
+            quit_message = self.config_manager.get_quit_message() if self.config_manager else "Leaving"
+            self.irc_manager.disconnect_all(quit_message)
 
         # Cleanup sound
         if self.sound_manager:

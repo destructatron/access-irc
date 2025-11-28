@@ -209,6 +209,12 @@ class IRCConnection:
             nick = hostmask[0] if hostmask else "Unknown"
             reason = args[0] if args else ""
 
+            # Capture which channels the user was in BEFORE removing them
+            affected_channels = []
+            for channel in self.channel_users:
+                if nick in self.channel_users[channel]:
+                    affected_channels.append(channel)
+
             # Remove user from all channels
             self.remove_user_from_all_channels(nick)
 
@@ -217,7 +223,8 @@ class IRCConnection:
                 "on_quit",
                 self.server_name,
                 nick,
-                reason
+                reason,
+                affected_channels
             )
 
         def on_nick(irc, hostmask, args):
