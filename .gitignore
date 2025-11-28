@@ -40,3 +40,5 @@ htmlcov/
 
 # Logs
 *.log
+# Claude config
+.claude

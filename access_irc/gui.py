@@ -24,7 +24,10 @@ class AccessibleIRCWindow(Gtk.Window):
             app_title: Application window title
         """
         super().__init__(title=app_title)
-        self.set_default_size(1000, 700)
+        # Use a larger default size to ensure all panels are visible
+        self.set_default_size(1200, 800)
+        # Set minimum size to ensure all UI elements are visible
+        self.set_size_request(900, 600)
         self.set_border_width(6)
 
         # Store references for callbacks
@@ -78,17 +81,17 @@ class AccessibleIRCWindow(Gtk.Window):
         main_box.pack_start(menubar, False, False, 0)
 
         # Main content area with paned layout
-        paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
-        paned.set_position(250)
-        main_box.pack_start(paned, True, True, 0)
+        self.main_paned = Gtk.Paned(orientation=Gtk.Orientation.HORIZONTAL)
+        # Position will be set in _on_window_realized
+        main_box.pack_start(self.main_paned, True, True, 0)
 
         # Left side: Server and channel list
         left_panel = self._create_left_panel()
-        paned.add1(left_panel)
+        self.main_paned.add1(left_panel)
 
         # Right side: Chat area
         right_panel = self._create_right_panel()
-        paned.add2(right_panel)
+        self.main_paned.add2(right_panel)
 
         # Status bar
         self.statusbar = Gtk.Statusbar()
@@ -230,6 +233,7 @@ class AccessibleIRCWindow(Gtk.Window):
         chat_scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
         chat_scrolled.set_hexpand(True)
         chat_scrolled.set_vexpand(True)
+        # Don't set min_content_width - let paned positioning handle sizing
         self.h_paned.add1(chat_scrolled)
 
         # TextView for messages (read-only but navigable)
@@ -239,6 +243,8 @@ class AccessibleIRCWindow(Gtk.Window):
         self.message_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
         self.message_view.set_left_margin(6)
         self.message_view.set_right_margin(6)
+        # Ensure it can receive focus for keyboard navigation
+        self.message_view.set_can_focus(True)
 
         # Set monospace font for better readability
         font_desc = Pango.FontDescription("monospace 10")
@@ -263,17 +269,15 @@ class AccessibleIRCWindow(Gtk.Window):
         # ScrolledWindow for users list
         users_scrolled = Gtk.ScrolledWindow()
         users_scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
-        users_scrolled.set_min_content_width(150)
+        # Don't set min_content_width - let paned positioning handle sizing
         users_scrolled.show()
         users_box.pack_start(users_scrolled, True, True, 0)
 
         # ListBox for users (simpler than TreeView for a flat list)
         self.users_list = Gtk.ListBox()
         self.users_list.set_selection_mode(Gtk.SelectionMode.SINGLE)
-
-        # Don't participate in tab chain (only accessible via Alt+U mnemonic)
-        # This prevents Tab from cycling through individual users
-        self.users_list.set_focus_on_click(False)
+        # Allow focus so it's in the tab chain
+        self.users_list.set_can_focus(True)
         self.users_list.set_visible(True)
         self.users_list.show()
 
@@ -321,15 +325,41 @@ class AccessibleIRCWindow(Gtk.Window):
 
         box.pack_start(input_box, False, False, 0)
 
+        # Set focus chain on h_paned to control order of chat vs users
+        # Order: chat_scrolled → users_scrolled
+        self.h_paned.set_focus_chain([chat_scrolled, users_scrolled])
+
         return box
 
     def _on_window_realized(self, widget) -> None:
-        """Set paned position after window is realized and sized"""
+        """Set paned positions after window is realized and sized"""
+        # Use idle_add to ensure layout is complete before setting positions
+        GLib.idle_add(self._set_paned_positions)
+
+    def _set_paned_positions(self) -> bool:
+        """Set paned positions based on window size"""
+        # Set main paned position (left panel vs right panel)
+        if self.main_paned:
+            # Give left panel 250px for server/channel tree
+            self.main_paned.set_position(250)
+
+        # Set h_paned position (chat area vs users list)
         if self.h_paned:
-            # Set position to 70% of window width, leaving 30% for users list
-            allocation = self.h_paned.get_allocation()
-            position = int(allocation.width * 0.70)
+            # Get the actual window width
+            window_width = self.get_size()[0]
+
+            # Calculate available width for h_paned
+            # Account for: left panel (250px) + borders (12px) + spacing
+            available_width = window_width - 270
+
+            # Give users list 200px, rest to chat
+            # This ensures users list is always visible
+            users_width = 200
+            position = max(available_width - users_width, available_width // 2)
+
             self.h_paned.set_position(position)
+
+        return False  # Don't repeat
 
     def set_managers(self, irc_manager, sound_manager, config_manager) -> None:
         """
