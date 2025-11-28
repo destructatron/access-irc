@@ -207,11 +207,25 @@ class AccessIRCApplication:
         """Handle nick change"""
         message = f"{old_nick} is now known as {new_nick}"
 
-        # Add to all channels where this user is present
+        # Get connection to check if this is our own nick change
         connection = self.irc.connections.get(server)
+        is_own_nick = False
+
         if connection:
-            # Iterate through all channels and check if user is in them
-            # Note: The user has already been renamed in channel_users by the IRC manager
+            # Check if this is our own nickname changing
+            # The IRC manager has already updated connection.nickname to new_nick,
+            # so we check if new_nick matches the current nickname
+            is_own_nick = (connection.nickname == new_nick and old_nick != new_nick)
+
+            # If it's our own nickname, always show in server view
+            if is_own_nick:
+                # Show prominent message in server view
+                own_message = f"Your nickname has been changed from {old_nick} to {new_nick}"
+                self.window.add_system_message(server, server, own_message)
+                # Announce to screen reader
+                self.window.announce_to_screen_reader(own_message)
+
+            # Add to all channels where this user is present (for own nick and others)
             for channel in connection.channel_users:
                 if new_nick in connection.channel_users[channel]:
                     self.window.add_system_message(server, channel, message)
@@ -220,8 +234,8 @@ class AccessIRCApplication:
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
 
-        # Announce if configured
-        if self.config.should_announce_joins_parts():
+        # Announce if configured (for other users' nick changes)
+        if not is_own_nick and self.config.should_announce_joins_parts():
             self.window.announce_to_screen_reader(message)
 
     def on_irc_names(self, server: str, channel: str, users: list) -> None:
