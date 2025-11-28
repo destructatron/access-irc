@@ -68,6 +68,23 @@ class SoundManager:
                     player = Gst.ElementFactory.make("playbin", f"{sound_type}_player")
                     if player:
                         player.set_property("uri", uri)
+
+                        # Set up bus signal watch once per player
+                        bus = player.get_bus()
+                        bus.add_signal_watch()
+
+                        def on_message(bus, message, player):
+                            if message.type == Gst.MessageType.EOS:
+                                # End of stream - stop playback
+                                player.set_state(Gst.State.NULL)
+                            elif message.type == Gst.MessageType.ERROR:
+                                # Error occurred
+                                err, debug = message.parse_error()
+                                print(f"GStreamer error: {err}")
+                                player.set_state(Gst.State.NULL)
+
+                        bus.connect("message", on_message, player)
+
                         self.sounds[sound_type] = uri
                         self.players[sound_type] = player
                         print(f"Loaded {sound_type} sound: {sound_path}")
@@ -100,27 +117,8 @@ class SoundManager:
             try:
                 # Stop any currently playing instance and reset to start
                 player.set_state(Gst.State.NULL)
-                # Start playing
+                # Start playing (bus callback will handle cleanup)
                 player.set_state(Gst.State.PLAYING)
-
-                # Set up callback to return to NULL state when done
-                bus = player.get_bus()
-                bus.add_signal_watch()
-
-                def on_message(bus, message):
-                    if message.type == Gst.MessageType.EOS:
-                        # End of stream - stop playback
-                        player.set_state(Gst.State.NULL)
-                        bus.remove_signal_watch()
-                    elif message.type == Gst.MessageType.ERROR:
-                        # Error occurred
-                        err, debug = message.parse_error()
-                        print(f"GStreamer error playing {sound_type}: {err}")
-                        player.set_state(Gst.State.NULL)
-                        bus.remove_signal_watch()
-
-                bus.connect("message", on_message)
-
             except Exception as e:
                 print(f"Failed to play {sound_type} sound: {e}")
 
@@ -151,6 +149,9 @@ class SoundManager:
             for player in self.players.values():
                 if player:
                     player.set_state(Gst.State.NULL)
+                    # Remove bus signal watch
+                    bus = player.get_bus()
+                    bus.remove_signal_watch()
 
             self.sounds.clear()
             self.players.clear()
@@ -193,6 +194,9 @@ class SoundManager:
                 for player in self.players.values():
                     if player:
                         player.set_state(Gst.State.NULL)
+                        # Remove bus signal watch
+                        bus = player.get_bus()
+                        bus.remove_signal_watch()
 
                 self.players.clear()
                 self.sounds.clear()
