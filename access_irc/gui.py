@@ -51,6 +51,12 @@ class AccessibleIRCWindow(Gtk.Window):
         # Reference to users list widget
         self.users_list = None
 
+        # Tab completion state
+        self.tab_completion_matches = []
+        self.tab_completion_index = 0
+        self.tab_completion_word_start = 0
+        self.tab_completion_original_after = ""
+
         # Build UI
         self._build_ui()
 
@@ -304,6 +310,7 @@ class AccessibleIRCWindow(Gtk.Window):
         self.message_entry = Gtk.Entry()
         self.message_entry.set_placeholder_text("Type your message here...")
         self.message_entry.connect("activate", self.on_send_message)
+        self.message_entry.connect("key-press-event", self.on_message_entry_key_press)
         input_label.set_mnemonic_widget(self.message_entry)
         input_box.pack_start(self.message_entry, True, True, 0)
 
@@ -835,6 +842,91 @@ class AccessibleIRCWindow(Gtk.Window):
             else:
                 menu.popup(None, None, None, None, event_or_time.button, event_or_time.time)
 
+    def on_message_entry_key_press(self, widget, event) -> bool:
+        """Handle key press in message entry for tab completion"""
+        # Handle Tab key for nickname completion
+        if event.keyval == Gdk.KEY_Tab or event.keyval == Gdk.KEY_ISO_Left_Tab:
+            # Only do completion in channels (not PMs or server views)
+            if not self.current_target or not self.current_target.startswith("#"):
+                return False
+
+            # Get current text and cursor position
+            text = self.message_entry.get_text()
+            cursor_pos = self.message_entry.get_position()
+
+            # If this is the first Tab press, find matches
+            if not self.tab_completion_matches:
+                # Find the word being completed
+                # Search backwards from cursor to find word start
+                word_start = cursor_pos
+                while word_start > 0 and text[word_start - 1] not in (' ', '\t', '\n'):
+                    word_start -= 1
+
+                # Get the partial word
+                partial = text[word_start:cursor_pos].lower()
+
+                if not partial:
+                    return False
+
+                # Get users in current channel
+                users = self.irc_manager.get_channel_users(self.current_server, self.current_target) if self.irc_manager else []
+
+                # Remove mode prefixes (@, +, %, ~, &) and find matches
+                matches = []
+                for user in users:
+                    # Strip mode prefix
+                    clean_user = user.lstrip('@+%~&')
+                    if clean_user.lower().startswith(partial):
+                        matches.append(clean_user)
+
+                if not matches:
+                    return False
+
+                # Sort matches alphabetically
+                matches.sort(key=str.lower)
+
+                # Store completion state
+                self.tab_completion_matches = matches
+                self.tab_completion_index = 0
+                self.tab_completion_word_start = word_start
+                # Store the original text that comes after the partial match
+                self.tab_completion_original_after = text[cursor_pos:]
+            else:
+                # Cycle to next match
+                self.tab_completion_index = (self.tab_completion_index + 1) % len(self.tab_completion_matches)
+
+            # Get the completion
+            completion = self.tab_completion_matches[self.tab_completion_index]
+
+            # Check if we're at the start of the message
+            is_start = self.tab_completion_word_start == 0
+
+            # Build the completed text using stored original positions
+            before = text[:self.tab_completion_word_start]
+            # Always use the original "after" text we stored on first Tab
+            after = self.tab_completion_original_after
+
+            if is_start:
+                # Add colon and space at start of message
+                new_text = before + completion + ": " + after
+                new_cursor_pos = len(before) + len(completion) + 2
+            else:
+                # Just add space after username
+                new_text = before + completion + " " + after
+                new_cursor_pos = len(before) + len(completion) + 1
+
+            # Update entry
+            self.message_entry.set_text(new_text)
+            self.message_entry.set_position(new_cursor_pos)
+
+            return True  # Consume the event
+        else:
+            # Reset tab completion on any other key
+            self.tab_completion_matches = []
+            self.tab_completion_index = 0
+            self.tab_completion_original_after = ""
+            return False
+
     def on_send_message(self, widget) -> None:
         """Handle send message"""
         message = self.message_entry.get_text().strip()
@@ -861,6 +953,11 @@ class AccessibleIRCWindow(Gtk.Window):
 
         # Clear entry
         self.message_entry.set_text("")
+
+        # Reset tab completion state when sending
+        self.tab_completion_matches = []
+        self.tab_completion_index = 0
+        self.tab_completion_original_after = ""
 
     def _handle_command(self, command: str) -> None:
         """Handle IRC commands"""

@@ -19,6 +19,7 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 - Channel and private message management
 - Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/quit`, `/raw`
 - User lists with mode prefixes (@, +, %, ~, &)
+- Tab completion for usernames in channels (press Tab to cycle through matches)
 - CTCP ACTION and NOTICE support
 - SSL/TLS with self-signed certificate support
 - IRC bouncer compatibility (ZNC, etc.)
@@ -135,7 +136,7 @@ Configuration is stored in `config.json` in your current directory (auto-created
 
 ### Keyboard Navigation
 
-- `Tab` / `Shift+Tab` - Navigate between UI elements
+- `Tab` / `Shift+Tab` - Navigate between UI elements (or complete usernames when typing in message input)
 - `Alt+S` - Server menu
 - `Alt+C` - Channel menu
 - `Alt+T` - Settings menu
