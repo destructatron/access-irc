@@ -331,7 +331,8 @@ class AccessibleIRCWindow(Gtk.Window):
 
         # Entry for message input
         self.message_entry = Gtk.Entry()
-        self.message_entry.set_placeholder_text("Type your message here...")
+        self.message_entry.set_placeholder_text("Use / for commands. Tab to autocomplete nicknames.")
+
         self.message_entry.connect("activate", self.on_send_message)
         self.message_entry.connect("key-press-event", self.on_message_entry_key_press)
         input_label.set_mnemonic_widget(self.message_entry)
@@ -974,8 +975,8 @@ class AccessibleIRCWindow(Gtk.Window):
                     self.announce_to_screen_reader(f"match {match_position} of {total_matches}")
                 return False  # Don't repeat
 
-            # Delay announcement by 150ms to let Orca announce the text change first
-            GLib.timeout_add(150, announce_match_position)
+            # Delay announcement by 40ms to let Orca announce the text change first
+            GLib.timeout_add(40, announce_match_position)
 
             return True  # Consume the event
         else:
