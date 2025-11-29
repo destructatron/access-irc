@@ -9,6 +9,7 @@
       "port": 6667,
       "ssl": false,
       "verify_ssl": true,
+      "autoconnect": false,
       "channels": [
         "#python",
         "#linux"
@@ -23,6 +24,7 @@
       "port": 6697,
       "ssl": true,
       "verify_ssl": false,
+      "autoconnect": false,
       "channels": [],
       "username": "myuser/libera",
       "password": "mypassword",

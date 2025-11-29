@@ -63,17 +63,38 @@ class AccessIRCApplication:
         self.window.show_all()
         self.window.update_status("Ready")
 
-        # Auto-connect to servers if configured
-        self._auto_connect_servers()
+        # Auto-connect to servers after main loop starts (using idle_add to avoid race conditions)
+        GLib.idle_add(self._auto_connect_servers)
 
         Gtk.main()
         return 0
 
-    def _auto_connect_servers(self) -> None:
-        """Auto-connect to servers marked for auto-connect"""
-        # For now, we don't auto-connect. User must manually connect via the GUI.
-        # This could be extended to support an "auto_connect" flag in server config
-        pass
+    def _auto_connect_servers(self) -> bool:
+        """
+        Auto-connect to servers marked for auto-connect
+
+        Returns:
+            False to prevent GLib from repeating this callback
+        """
+        servers = self.config.get_servers()
+
+        for server in servers:
+            # Check if server has autoconnect enabled
+            if server.get("autoconnect", False):
+                server_name = server.get("name", "Unknown")
+
+                # Attempt to connect
+                if self.irc.connect_server(server):
+                    # Add server to tree
+                    self.window.add_server_to_tree(server_name)
+                    self.window.update_status(f"Auto-connecting to {server_name}...")
+                else:
+                    # Show error in GUI and console
+                    error_msg = f"Failed to auto-connect to {server_name}"
+                    self.window.update_status(error_msg)
+                    print(error_msg)
+
+        return False  # Don't repeat this callback
 
     # IRC event callbacks
     def on_irc_connect(self, server_name: str) -> None:

@@ -54,8 +54,8 @@ class ServerManagementDialog(Gtk.Dialog):
         scrolled.set_hexpand(True)
         hbox.pack_start(scrolled, True, True, 0)
 
-        # ListStore: name, host, port, ssl, channels (joined), data
-        self.store = Gtk.ListStore(str, str, int, bool, str, object)
+        # ListStore: name, host, port, ssl, autoconnect, channels (joined), data
+        self.store = Gtk.ListStore(str, str, int, bool, bool, str, object)
         self.tree_view = Gtk.TreeView(model=self.store)
 
         # Columns
@@ -64,11 +64,12 @@ class ServerManagementDialog(Gtk.Dialog):
             ("Host", 1),
             ("Port", 2),
             ("SSL", 3),
-            ("Channels", 4)
+            ("Autoconnect", 4),
+            ("Channels", 5)
         ]
 
         for title, col_id in columns:
-            if col_id == 3:  # SSL column (boolean)
+            if col_id == 3 or col_id == 4:  # SSL and Autoconnect columns (boolean)
                 renderer = Gtk.CellRendererToggle()
                 renderer.set_property("sensitive", False)
                 column = Gtk.TreeViewColumn(title, renderer, active=col_id)
@@ -122,9 +123,10 @@ class ServerManagementDialog(Gtk.Dialog):
             host = server.get("host", "")
             port = server.get("port", 6667)
             ssl = server.get("ssl", False)
+            autoconnect = server.get("autoconnect", False)
             channels = ", ".join(server.get("channels", []))
 
-            self.store.append([name, host, port, ssl, channels, server])
+            self.store.append([name, host, port, ssl, autoconnect, channels, server])
 
     def on_add_server(self, widget) -> None:
         """Show add server dialog"""
@@ -146,7 +148,7 @@ class ServerManagementDialog(Gtk.Dialog):
         if not iter:
             return
 
-        server = model.get_value(iter, 5)
+        server = model.get_value(iter, 6)
         index = model.get_path(iter).get_indices()[0]
 
         dialog = ServerEditDialog(self, server)
@@ -200,7 +202,7 @@ class ServerManagementDialog(Gtk.Dialog):
         if not iter:
             return
 
-        server = model.get_value(iter, 5)
+        server = model.get_value(iter, 6)
         server_name = server.get("name")
 
         if self.irc_manager.is_connected(server_name):
@@ -224,7 +226,7 @@ class ServerManagementDialog(Gtk.Dialog):
         if not iter:
             return
 
-        server = model.get_value(iter, 5)
+        server = model.get_value(iter, 6)
         server_name = server.get("name")
 
         if not self.irc_manager.is_connected(server_name):
@@ -338,6 +340,12 @@ class ServerEditDialog(Gtk.Dialog):
         grid.attach(self.verify_ssl_check, 1, row, 1, 1)
         row += 1
 
+        # Autoconnect
+        self.autoconnect_check = Gtk.CheckButton.new_with_mnemonic("_Autoconnect on startup")
+        self.autoconnect_check.set_tooltip_text("Automatically connect to this server when the application starts")
+        grid.attach(self.autoconnect_check, 1, row, 1, 1)
+        row += 1
+
         # Channels
         label = Gtk.Label.new_with_mnemonic("_Channels (comma-separated):")
         label.set_halign(Gtk.Align.END)
@@ -407,6 +415,7 @@ class ServerEditDialog(Gtk.Dialog):
         self.port_spin.set_value(self.server.get("port", 6667))
         self.ssl_check.set_active(self.server.get("ssl", False))
         self.verify_ssl_check.set_active(self.server.get("verify_ssl", True))
+        self.autoconnect_check.set_active(self.server.get("autoconnect", False))
 
         channels = self.server.get("channels", [])
         self.channels_entry.set_text(", ".join(channels))
@@ -436,6 +445,7 @@ class ServerEditDialog(Gtk.Dialog):
             "port": int(self.port_spin.get_value()),
             "ssl": self.ssl_check.get_active(),
             "verify_ssl": self.verify_ssl_check.get_active(),
+            "autoconnect": self.autoconnect_check.get_active(),
             "channels": channels,
             "username": self.username_entry.get_text().strip(),
             "password": self.password_entry.get_text(),  # Don't strip password
