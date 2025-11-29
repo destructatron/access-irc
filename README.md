@@ -15,7 +15,7 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 - Properly labeled form inputs and navigable message history
 
 ### IRC Functionality
-- Multi-server support
+- Multi-server support with autoconnect option
 - Channel and private message management
 - Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/quit`, `/raw`
 - User lists with mode prefixes (@, +, %, ~, &)
@@ -23,6 +23,7 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 - CTCP ACTION and NOTICE support
 - SSL/TLS with self-signed certificate support
 - IRC bouncer compatibility (ZNC, etc.)
+- **Conversation logging**: Per-server logging with date-based rotation
 
 ### Notifications
 - GStreamer-based sound notifications for mentions, messages, joins, parts, and notices
@@ -130,9 +131,40 @@ Configuration is stored in `config.json` in your current directory (auto-created
     "announce_all_messages": false,
     "announce_mentions_only": true,
     "announce_joins_parts": false
+  },
+  "logging": {
+    "log_directory": ""
   }
 }
 ```
+
+### Conversation Logging
+
+Access IRC can log all IRC conversations to disk with per-server control:
+
+**Setup:**
+1. Go to Settings → Preferences → Chat tab
+2. Set a log directory (e.g., `/home/user/irclogs`)
+3. Go to Server → Manage Servers, edit each server you want to log
+4. Check "Enable logging" for that server
+
+**Log Format:**
+```
+log_directory/
+├── ServerName/
+│   ├── #channel-2025-11-29.log
+│   ├── #channel-2025-11-30.log
+│   └── nickname-2025-11-29.log
+```
+
+Each log file contains timestamped messages:
+```
+[14:32:15] <alice> Hello everyone!
+[14:32:20] * bob waves
+[14:33:01] --> charlie has joined #channel
+```
+
+Logs are automatically rotated daily (new file each day) and organized by server and channel.
 
 ### Keyboard Navigation
 
@@ -181,6 +213,7 @@ Access IRC uses a manager-based architecture:
 - `access_irc/irc_manager.py` - IRC connection handling with threading
 - `access_irc/config_manager.py` - JSON configuration
 - `access_irc/sound_manager.py` - GStreamer audio notifications
+- `access_irc/log_manager.py` - Conversation logging to disk
 - `access_irc/server_dialog.py` - Server management UI
 - `access_irc/preferences_dialog.py` - Preferences UI
 

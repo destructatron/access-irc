@@ -25,7 +25,8 @@ The application uses a manager-based architecture where responsibilities are sep
 1. **ConfigManager** (`access_irc/config_manager.py`) - Handles JSON configuration persistence
 2. **SoundManager** (`access_irc/sound_manager.py`) - Manages pygame.mixer for audio notifications
 3. **IRCManager** (`access_irc/irc_manager.py`) - Manages multiple IRC server connections
-4. **AccessibleIRCWindow** (`access_irc/gui.py`) - Main GTK 3 UI with AT-SPI2 integration
+4. **LogManager** (`access_irc/log_manager.py`) - Manages conversation logging to disk
+5. **AccessibleIRCWindow** (`access_irc/gui.py`) - Main GTK 3 UI with AT-SPI2 integration
 
 All managers are instantiated in `access_irc/__main__.py` and injected into the GUI via `set_managers()`.
 
@@ -48,6 +49,60 @@ The application maintains separate `Gtk.TextBuffer` instances for each server/ch
 - Key format: `(server_name, channel_or_target)`
 
 When a user switches channels in the tree view, the appropriate buffer is loaded into the visible TextView.
+
+### Logging System
+
+The application includes a comprehensive logging system for recording IRC conversations to disk:
+
+**Directory Structure**:
+```
+log_directory/
+├── ServerName1/
+│   ├── #channel1-2025-11-29.log
+│   ├── #channel1-2025-11-30.log
+│   └── #channel2-2025-11-29.log
+└── ServerName2/
+    └── nickname-2025-11-29.log  (private messages)
+```
+
+**Log Format**:
+```
+[14:32:15] <alice> Hello everyone!
+[14:32:20] * bob waves
+[14:32:25] -NickServ- You are now identified
+[14:33:01] --> charlie has joined #python
+[14:33:45] <-- charlie has left #python (Goodbye)
+[14:34:12] <-- david has quit (Ping timeout)
+[14:35:00] --- alice is now known as alice_afk
+[14:36:22] <-! spammer was kicked by moderator (Spam)
+```
+
+**Key Features**:
+- **Per-server control**: Each server has a `logging_enabled` flag in its config
+- **Date-based rotation**: New log file created each day (YYYY-MM-DD format)
+- **Thread-safe writes**: Uses `threading.Lock()` to prevent race conditions
+- **Automatic directory creation**: Creates `log_dir/server/` on-demand and when log directory is set
+- **Secure path sanitization**: Prevents path traversal attacks, removes null bytes, limits filename length
+- **All events logged**: Messages, actions, notices, joins, parts, quits, nick changes, kicks
+
+**Configuration** (in `access_irc/__main__.py`):
+- LogManager checks `_should_log_server(server_name)` before logging
+- This verifies both the log directory is set AND the server has logging enabled
+- All IRC event handlers call appropriate `log.*()` methods when logging is enabled
+
+**Thread Safety** (critical):
+- LogManager uses `self._write_lock` to protect concurrent file writes
+- IRCManager uses `self._connections_lock` to protect the connections dictionary
+- When reading connected servers (e.g., in preferences), ALWAYS use the lock:
+  ```python
+  with irc_manager._connections_lock:
+      servers = list(irc_manager.connections.keys())
+  ```
+
+**Error Handling**:
+- `set_log_directory()` raises `OSError` if directory creation fails
+- Preferences dialog catches errors and shows user-friendly error dialogs
+- Invalid server names are skipped (empty or whitespace-only)
 
 ## AT-SPI2 Accessibility Implementation
 
@@ -101,6 +156,9 @@ Config is stored in `config.json` (created from `config.json.example` on first r
     "announce_all_messages": true,  // Announce all non-mention messages
     "announce_mentions_only": true, // Announce mentions
     "announce_joins_parts": false   // Announce joins/parts
+  },
+  "logging": {
+    "log_directory": "/path/to/logs"  // Leave empty to disable logging
   }
 }
 ```
@@ -121,6 +179,10 @@ Config is stored in `config.json` (created from `config.json.example` on first r
 - `sasl`: Enable SASL authentication for NickServ
   - Set to `true` for direct IRC server connections with NickServ authentication
   - Set to `false` for bouncer connections (ZNC, etc.)
+- `autoconnect`: Automatically connect to this server on startup (default: `false`)
+- `logging_enabled`: Enable conversation logging for this server (default: `false`)
+  - Requires global `logging.log_directory` to be set
+  - Logs are saved to `log_directory/ServerName/channel-YYYY-MM-DD.log`
 
 **Important**:
 - Server configs should NOT include `nickname` or `realname` fields - they automatically inherit from global config
@@ -134,10 +196,13 @@ Config is stored in `config.json` (created from `config.json.example` on first r
 The application uses two main dialog types:
 
 1. **ServerManagementDialog** (`access_irc/server_dialog.py`) - Lists servers with add/edit/remove/connect buttons. Contains nested `ServerEditDialog` for editing individual servers.
+   - ServerEditDialog includes checkboxes for SSL, autoconnect, and logging
 
-2. **PreferencesDialog** (`access_irc/preferences_dialog.py`) - Tabbed notebook with User, Sounds, and Accessibility tabs.
+2. **PreferencesDialog** (`access_irc/preferences_dialog.py`) - Tabbed notebook with User, Chat, Sounds, and Accessibility tabs.
+   - Chat tab includes log directory configuration with browse button
+   - When log directory is changed, server subdirectories are created for connected servers
 
-Both dialogs receive manager references (config, sound, irc) and save changes directly via the managers.
+Both dialogs receive manager references (config, sound, irc, log) and save changes directly via the managers.
 
 ## Sound System
 
@@ -251,6 +316,30 @@ The application supports IRC bouncers with the following features:
 
 ## Development Guidelines
 
+### Adding Logging to New Events
+
+When adding logging for a new IRC event type:
+
+1. **Add method to LogManager** (`access_irc/log_manager.py`):
+   ```python
+   def log_new_event(self, server: str, target: str, arg1: str, arg2: str) -> None:
+       timestamp = datetime.now().strftime("[%H:%M:%S]")
+       line = f"{timestamp} [format your log line here]"
+       self._write_to_log(server, target, line)
+   ```
+
+2. **Call from event handler** (`access_irc/__main__.py`):
+   ```python
+   def on_irc_new_event(self, server: str, ...):
+       # ... existing GUI code ...
+
+       # Log event if enabled for this server
+       if self._should_log_server(server):
+           self.log.log_new_event(server, target, arg1, arg2)
+   ```
+
+3. **Thread safety**: All log writes are automatically protected by `_write_lock` in `_write_to_log()`
+
 ### Adding New IRC Commands
 
 1. Add command parsing in `access_irc/gui.py:_handle_command()`
@@ -307,6 +396,13 @@ This combination makes the text read-only but fully navigable, which is essentia
 3. **AT-SPI2 Signals**: Use "notification" not "announce" (GTK 3 limitation)
 4. **Config Persistence**: Call `config.save_config()` after making changes
 5. **Mnemonics**: All form labels should use `new_with_mnemonic()` and `set_mnemonic_widget()`
+6. **Thread-Safe Dictionary Access**: When reading `irc_manager.connections`, use `_connections_lock`:
+   ```python
+   with irc_manager._connections_lock:
+       servers = list(irc_manager.connections.keys())
+   ```
+7. **Logging**: Check both log directory is set AND server has logging enabled before logging
+8. **Path Security**: Always sanitize server/channel names before using in file paths (LogManager handles this)
 
 ## System Dependencies
 
