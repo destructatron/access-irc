@@ -580,7 +580,7 @@ class IRCConnection:
             if not channel.startswith("#"):
                 channel = "#" + channel
             try:
-                self.irc.join(channel)
+                self.irc.quote(f"JOIN {channel}")
             except Exception as e:
                 print(f"Failed to join {channel}: {e}")
 
@@ -594,7 +594,10 @@ class IRCConnection:
         """
         if self.irc and self.connected:
             try:
-                self.irc.part(channel, reason)
+                if reason:
+                    self.irc.quote(f"PART {channel} :{reason}")
+                else:
+                    self.irc.quote(f"PART {channel}")
             except Exception as e:
                 print(f"Failed to part {channel}: {e}")
 
