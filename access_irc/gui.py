@@ -569,8 +569,6 @@ class AccessibleIRCWindow(Gtk.Window):
         if channel is None:
             channel = self.current_target
 
-        print(f"DEBUG: update_users_list called for {server}/{channel}")
-
         # Clear current users list
         for child in self.users_list.get_children():
             self.users_list.remove(child)
@@ -578,7 +576,6 @@ class AccessibleIRCWindow(Gtk.Window):
         # Only show users for channels (not PMs or server views)
         if server and channel and channel.startswith("#") and self.irc_manager:
             users = self.irc_manager.get_channel_users(server, channel)
-            print(f"DEBUG: Got {len(users)} users: {users}")
             for user in users:
                 label = Gtk.Label(label=user, xalign=0)
                 label.set_margin_start(6)
@@ -589,8 +586,6 @@ class AccessibleIRCWindow(Gtk.Window):
 
             # Show all the new labels
             self.users_list.show_all()
-        else:
-            print(f"DEBUG: Not showing users - server={server}, channel={channel}, startswith#={channel.startswith('#') if channel else False}, has_manager={self.irc_manager is not None}")
 
     def _scroll_to_bottom(self) -> None:
         """Scroll message view to bottom"""
@@ -974,7 +969,6 @@ class AccessibleIRCWindow(Gtk.Window):
             if message.startswith("/"):
                 self._handle_command(message)
             else:
-                print(f"DEBUG: Sending message to {self.current_server}/{self.current_target}: {message}")
                 self.irc_manager.send_message(self.current_server, self.current_target, message)
 
                 # Add own message to display

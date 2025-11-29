@@ -9,18 +9,11 @@ Access IRC is an accessible GTK 3 IRC client for Linux with screen reader suppor
 ## Running the Application
 
 ```bash
-# Run the application
-python3 main.py
-# or
-./main.py
-
-# Generate test sound files (requires numpy and scipy)
-python3 generate_sounds.py
+# Run the application (as a package)
+python3 -m access_irc
 
 # Install dependencies
 pip install -r requirements.txt
-# or use the installer
-./install.sh
 ```
 
 ## Architecture
@@ -29,19 +22,19 @@ pip install -r requirements.txt
 
 The application uses a manager-based architecture where responsibilities are separated into distinct components:
 
-1. **ConfigManager** (`config_manager.py`) - Handles JSON configuration persistence
-2. **SoundManager** (`sound_manager.py`) - Manages pygame.mixer for audio notifications
-3. **IRCManager** (`irc_manager.py`) - Manages multiple IRC server connections
-4. **AccessibleIRCWindow** (`gui.py`) - Main GTK 3 UI with AT-SPI2 integration
+1. **ConfigManager** (`access_irc/config_manager.py`) - Handles JSON configuration persistence
+2. **SoundManager** (`access_irc/sound_manager.py`) - Manages pygame.mixer for audio notifications
+3. **IRCManager** (`access_irc/irc_manager.py`) - Manages multiple IRC server connections
+4. **AccessibleIRCWindow** (`access_irc/gui.py`) - Main GTK 3 UI with AT-SPI2 integration
 
-All managers are instantiated in `main.py` and injected into the GUI via `set_managers()`.
+All managers are instantiated in `access_irc/__main__.py` and injected into the GUI via `set_managers()`.
 
 ### IRC Connection Threading Model
 
 **Critical**: The IRC connections run in separate threads (miniirc handles this internally), but GTK must only be updated from the main thread. This is achieved by:
 
-- IRC event handlers (in `irc_manager.py`) use `GLib.idle_add()` to schedule GUI updates
-- All callbacks pass through the application layer (`main.py`) which calls GUI methods
+- IRC event handlers (in `access_irc/irc_manager.py`) use `GLib.idle_add()` to schedule GUI updates
+- All callbacks pass through the application layer (`access_irc/__main__.py`) which calls GUI methods
 - Example flow: IRC thread → GLib.idle_add(callback) → GTK main thread → GUI update
 
 When modifying IRC handlers, ALWAYS use `GLib.idle_add()` before calling any GTK/GUI functions.
@@ -50,7 +43,7 @@ When modifying IRC handlers, ALWAYS use `GLib.idle_add()` before calling any GTK
 
 The application maintains separate `Gtk.TextBuffer` instances for each server/channel combination:
 
-- Stored in `gui.py:message_buffers` as `Dict[Tuple[server, target], Gtk.TextBuffer]`
+- Stored in `access_irc/gui.py:message_buffers` as `Dict[Tuple[server, target], Gtk.TextBuffer]`
 - Buffers persist even when switching views, preserving chat history
 - Key format: `(server_name, channel_or_target)`
 
@@ -58,7 +51,7 @@ When a user switches channels in the tree view, the appropriate buffer is loaded
 
 ## AT-SPI2 Accessibility Implementation
 
-**Core Accessibility Feature**: The `announce_to_screen_reader()` method in `gui.py` sends notifications directly to screen readers:
+**Core Accessibility Feature**: The `announce_to_screen_reader()` method in `access_irc/gui.py` sends notifications directly to screen readers:
 
 ```python
 atk_object = self.get_accessible()
@@ -140,9 +133,9 @@ Config is stored in `config.json` (created from `config.json.example` on first r
 
 The application uses two main dialog types:
 
-1. **ServerManagementDialog** (`server_dialog.py`) - Lists servers with add/edit/remove/connect buttons. Contains nested `ServerEditDialog` for editing individual servers.
+1. **ServerManagementDialog** (`access_irc/server_dialog.py`) - Lists servers with add/edit/remove/connect buttons. Contains nested `ServerEditDialog` for editing individual servers.
 
-2. **PreferencesDialog** (`preferences_dialog.py`) - Tabbed notebook with User, Sounds, and Accessibility tabs.
+2. **PreferencesDialog** (`access_irc/preferences_dialog.py`) - Tabbed notebook with User, Sounds, and Accessibility tabs.
 
 Both dialogs receive manager references (config, sound, irc) and save changes directly via the managers.
 
@@ -169,7 +162,7 @@ Users can specify custom paths in Preferences, and `reload_sounds()` will reload
 
 - **miniirc** is used for IRC protocol handling (not irc3 or pydle)
 - Each server gets an `IRCConnection` instance with its own miniirc.IRC object
-- IRC handlers are registered via `self.irc.Handler(event, colon=False)(handler_function)` inside `_register_handlers()`
+- IRC handlers are registered via `self.irc.Handler(event, colon=False)(handler_function)` inside `access_irc/irc_manager.py:_register_handlers()`
   - Handlers must be plain functions (not decorated) with signature: `def handler(irc, hostmask, args)`
   - All handlers must use `GLib.idle_add()` with a wrapper that returns `False` to prevent repeated calls
 - Nickname mentions are detected by checking if `self.nickname.lower() in message.lower()`
@@ -235,13 +228,13 @@ The application supports IRC bouncers with the following features:
 - NOTICE messages: `[timestamp] -sender- message`
 - System messages: `[timestamp] * message`
 
-**Supported IRC Commands** (in `gui.py:_handle_command()`):
+**Supported IRC Commands** (in `access_irc/gui.py:_handle_command()`):
 - `/join #channel` - Join a channel
 - `/part` or `/leave [reason]` - Leave current channel
 - `/me action` - Send CTCP ACTION message
 - `/quit` - Disconnect and exit application
 
-**IRC Event Handlers** (in `irc_manager.py`):
+**IRC Event Handlers** (in `access_irc/irc_manager.py`):
 - `PRIVMSG` - Regular messages and CTCP ACTION
   - Detects `\x01ACTION text\x01` format for /me messages
   - Separates actions from regular messages via different callbacks
@@ -260,19 +253,19 @@ The application supports IRC bouncers with the following features:
 
 ### Adding New IRC Commands
 
-1. Add command parsing in `gui.py:_handle_command()`
+1. Add command parsing in `access_irc/gui.py:_handle_command()`
 2. Call appropriate `irc_manager` method
 3. Add system message feedback for user confirmation
 
 ### Adding New Accessibility Announcements
 
-1. Call `self.window.announce_to_screen_reader(message)` from `main.py` callbacks
+1. Call `self.window.announce_to_screen_reader(message)` from `access_irc/__main__.py` callbacks
 2. Check config preferences before announcing: `config.should_announce_**()`
 3. Keep announcements concise - screen readers read them immediately
 
 ### Modifying IRC Event Handlers
 
-- All handlers in `irc_manager.py:_register_handlers()` must use `GLib.idle_add()`
+- All handlers in `access_irc/irc_manager.py:_register_handlers()` must use `GLib.idle_add()`
 - Pass all necessary data as arguments to the callback
 - Do NOT store mutable GTK objects in IRC threads
 
@@ -301,7 +294,7 @@ This combination makes the text read-only but fully navigable, which is essentia
 ## Testing Accessibility
 
 1. Start Orca: `orca`
-2. Run Access IRC: `python3 main.py`
+2. Run Access IRC: `python3 -m access_irc`
 3. Use Tab to navigate, verify Orca reads labels
 4. Connect to a test IRC server
 5. Have someone mention your nick, verify announcement is spoken immediately

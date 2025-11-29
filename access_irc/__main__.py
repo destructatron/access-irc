@@ -300,11 +300,41 @@ class AccessIRCApplication:
 def main():
     """Main entry point"""
 
+    # Redirect stdout/stderr to prevent crashes when running without a terminal
+    # (e.g., when run with `access-irc& disown`)
+    try:
+        # Try to open /dev/null for writing
+        devnull = open('/dev/null', 'w')
+        # Only redirect if stdout/stderr are not connected to a terminal
+        # This allows debugging when run normally, but prevents crashes when backgrounded
+        if not sys.stdout.isatty():
+            sys.stdout = devnull
+        if not sys.stderr.isatty():
+            sys.stderr = devnull
+    except Exception:
+        # If we can't redirect, continue anyway - print statements will just fail silently
+        pass
+
     # Check for miniirc
     try:
         import miniirc
     except ImportError:
-        print("Error: miniirc is required. Install with: pip install miniirc")
+        error_msg = "Error: miniirc is required. Install with: pip install miniirc"
+        # Show dialog if no terminal, otherwise print to console
+        try:
+            if not sys.stdout.isatty():
+                dialog = Gtk.MessageDialog(
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Missing Dependency"
+                )
+                dialog.format_secondary_text(error_msg)
+                dialog.run()
+                dialog.destroy()
+            else:
+                print(error_msg)
+        except:
+            pass  # If we can't show dialog, just exit
         return 1
 
     # Check for GStreamer (for sound)
