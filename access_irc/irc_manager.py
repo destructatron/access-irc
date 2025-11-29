@@ -4,6 +4,7 @@ IRC Manager for Access IRC
 Handles multiple IRC server connections using miniirc
 """
 
+import re
 import threading
 from datetime import datetime
 from typing import Dict, Callable, Optional, List, Any
@@ -15,6 +16,39 @@ try:
 except ImportError:
     MINIIRC_AVAILABLE = False
     print("Warning: miniirc not available. Please install with: pip install miniirc")
+
+
+def strip_irc_formatting(text: str) -> str:
+    """
+    Strip IRC formatting codes from text
+
+    IRC formatting codes:
+    - \x03 (0x03) - Color code, followed by optional foreground (1-2 digits)
+                    and optional background (comma + 1-2 digits)
+    - \x02 (0x02) - Bold
+    - \x1D (0x1D) - Italic
+    - \x1F (0x1F) - Underline
+    - \x16 (0x16) - Reverse (swap foreground/background)
+    - \x0F (0x0F) - Reset all formatting
+
+    Args:
+        text: Text with IRC formatting codes
+
+    Returns:
+        Text with formatting codes removed
+    """
+    # Remove color codes: \x03 followed by optional foreground and background
+    # Format: \x03[0-9]{1,2}(?:,[0-9]{1,2})?
+    text = re.sub(r'\x03(?:\d{1,2}(?:,\d{1,2})?)?', '', text)
+
+    # Remove other formatting codes
+    text = text.replace('\x02', '')  # Bold
+    text = text.replace('\x1D', '')  # Italic
+    text = text.replace('\x1F', '')  # Underline
+    text = text.replace('\x16', '')  # Reverse
+    text = text.replace('\x0F', '')  # Reset
+
+    return text
 
 
 class IRCConnection:
@@ -144,6 +178,8 @@ class IRCConnection:
             if message.startswith('\x01ACTION ') and message.endswith('\x01'):
                 # Extract action text
                 action = message[8:-1]  # Remove \x01ACTION and trailing \x01
+                # Strip IRC formatting codes from action
+                action = strip_irc_formatting(action)
                 # Call on_action callback
                 GLib.idle_add(
                     self._call_callback,
@@ -156,8 +192,10 @@ class IRCConnection:
                 )
             else:
                 # Regular message
-                # Check if nickname is mentioned
-                is_mention = self.nickname.lower() in message.lower()
+                # Strip IRC formatting codes from message
+                clean_message = strip_irc_formatting(message)
+                # Check if nickname is mentioned (check both original and clean for safety)
+                is_mention = self.nickname.lower() in message.lower() or self.nickname.lower() in clean_message.lower()
 
                 # Use GLib.idle_add to call callback in GTK main thread
                 GLib.idle_add(
@@ -166,7 +204,7 @@ class IRCConnection:
                     self.server_name,
                     channel,
                     sender,
-                    message,
+                    clean_message,
                     is_mention,
                     is_private
                 )
@@ -336,6 +374,9 @@ class IRCConnection:
             # For private notices, use the sender's nickname as the target
             channel = sender if is_private else target
 
+            # Strip IRC formatting codes from notice message
+            clean_message = strip_irc_formatting(message)
+
             # Use GLib.idle_add to call callback in GTK main thread
             GLib.idle_add(
                 self._call_callback,
@@ -343,7 +384,7 @@ class IRCConnection:
                 self.server_name,
                 channel,
                 sender,
-                message
+                clean_message
             )
 
         def on_whois_user(irc, hostmask, args):
