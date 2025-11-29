@@ -2,9 +2,9 @@
 Access IRC - An accessible IRC client for Linux with screen reader support
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "Access IRC Contributors"
-__license__ = "GPL-3.0"
+__license__ = "MIT"
 
 from .config_manager import ConfigManager
 from .sound_manager import SoundManager

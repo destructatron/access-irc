@@ -1466,10 +1466,10 @@ class AccessibleIRCWindow(Gtk.Window):
         """Show about dialog"""
         dialog = Gtk.AboutDialog(transient_for=self, modal=True)
         dialog.set_program_name("Access IRC")
-        dialog.set_version("1.0.0")
+        dialog.set_version("1.1.0")
         dialog.set_comments("An accessible IRC client for Linux with screen reader support")
         dialog.set_website("https://github.com/yourusername/access-irc")
-        dialog.set_license_type(Gtk.License.GPL_3_0)
+        dialog.set_license_type(Gtk.License.MIT_X11)
         dialog.set_authors(["Access IRC Contributors"])
         dialog.run()
         dialog.destroy()

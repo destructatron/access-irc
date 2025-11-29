@@ -10,13 +10,13 @@ long_description = readme_file.read_text(encoding="utf-8") if readme_file.exists
 
 setup(
     name="access-irc",
-    version="1.0.0",
+    version="1.1.0",
     description="An accessible IRC client for Linux with screen reader support",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Access IRC Contributors",
     url="https://github.com/destructatron/access-irc",
-    license="GPL-3.0",
+    license="MIT",
     packages=find_packages(),
     include_package_data=True,
     package_data={
@@ -45,7 +45,7 @@ setup(
         "Development Status :: 4 - Beta",
         "Environment :: X11 Applications :: GTK",
         "Intended Audience :: End Users/Desktop",
-        "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+        "License :: OSI Approved :: MIT License",
         "Operating System :: POSIX :: Linux",
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.7",
