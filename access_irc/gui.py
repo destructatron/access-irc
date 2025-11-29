@@ -402,7 +402,7 @@ class AccessibleIRCWindow(Gtk.Window):
 
             self.h_paned.set_position(position)
 
-    def set_managers(self, irc_manager, sound_manager, config_manager) -> None:
+    def set_managers(self, irc_manager, sound_manager, config_manager, log_manager=None) -> None:
         """
         Set manager references
 
@@ -410,10 +410,12 @@ class AccessibleIRCWindow(Gtk.Window):
             irc_manager: IRCManager instance
             sound_manager: SoundManager instance
             config_manager: ConfigManager instance
+            log_manager: LogManager instance (optional)
         """
         self.irc_manager = irc_manager
         self.sound_manager = sound_manager
         self.config_manager = config_manager
+        self.log_manager = log_manager
 
     def announce_to_screen_reader(self, message: str) -> None:
         """
@@ -1471,7 +1473,7 @@ class AccessibleIRCWindow(Gtk.Window):
     def on_preferences(self, widget) -> None:
         """Show preferences dialog"""
         from .preferences_dialog import PreferencesDialog
-        dialog = PreferencesDialog(self, self.config_manager, self.sound_manager)
+        dialog = PreferencesDialog(self, self.config_manager, self.sound_manager, self.log_manager)
         dialog.run()
         dialog.destroy()
 

@@ -34,6 +34,9 @@ class ConfigManager:
             "announce_all_messages": False,
             "announce_mentions_only": True,
             "announce_joins_parts": False
+        },
+        "logging": {
+            "log_directory": ""
         }
     }
 
@@ -291,6 +294,22 @@ class ConfigManager:
     def should_show_timestamps(self) -> bool:
         """Check if timestamps should be shown in messages"""
         return self.config.get("ui", {}).get("show_timestamps", True)
+
+    def get_log_directory(self) -> str:
+        """Get configured log directory"""
+        return self.config.get("logging", {}).get("log_directory", "")
+
+    def set_log_directory(self, log_directory: str) -> None:
+        """
+        Set log directory and save
+
+        Args:
+            log_directory: Path to log directory
+        """
+        if "logging" not in self.config:
+            self.config["logging"] = {}
+        self.config["logging"]["log_directory"] = log_directory
+        self.save_config()
 
 
 if __name__ == "__main__":

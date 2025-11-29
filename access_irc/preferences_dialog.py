@@ -14,7 +14,7 @@ import os
 class PreferencesDialog(Gtk.Dialog):
     """Dialog for application preferences"""
 
-    def __init__(self, parent, config_manager, sound_manager):
+    def __init__(self, parent, config_manager, sound_manager, log_manager=None):
         """
         Initialize preferences dialog
 
@@ -22,6 +22,7 @@ class PreferencesDialog(Gtk.Dialog):
             parent: Parent window
             config_manager: ConfigManager instance
             sound_manager: SoundManager instance
+            log_manager: LogManager instance (optional)
         """
         super().__init__(title="Preferences", parent=parent, modal=True)
         self.set_default_size(500, 400)
@@ -29,6 +30,7 @@ class PreferencesDialog(Gtk.Dialog):
 
         self.config = config_manager
         self.sound_manager = sound_manager
+        self.log_manager = log_manager
 
         self.add_buttons(
             Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
@@ -127,6 +129,43 @@ class PreferencesDialog(Gtk.Dialog):
             "Show _timestamps in messages"
         )
         box.pack_start(self.show_timestamps, False, False, 0)
+
+        box.pack_start(Gtk.Separator(), False, False, 6)
+
+        # Logging preferences
+        label = Gtk.Label(label="<b>Logging</b>")
+        label.set_use_markup(True)
+        label.set_halign(Gtk.Align.START)
+        box.pack_start(label, False, False, 0)
+
+        # Log directory
+        hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        log_label = Gtk.Label.new_with_mnemonic("_Log directory:")
+        log_label.set_halign(Gtk.Align.END)
+        hbox.pack_start(log_label, False, False, 0)
+
+        self.log_directory_entry = Gtk.Entry()
+        self.log_directory_entry.set_placeholder_text("Leave empty to disable logging")
+        self.log_directory_entry.set_hexpand(True)
+        log_label.set_mnemonic_widget(self.log_directory_entry)
+        hbox.pack_start(self.log_directory_entry, True, True, 0)
+
+        browse_btn = Gtk.Button(label="Browse...")
+        browse_btn.connect("clicked", self.on_browse_log_directory)
+        hbox.pack_start(browse_btn, False, False, 0)
+
+        box.pack_start(hbox, False, False, 0)
+
+        # Info label
+        info = Gtk.Label()
+        info.set_markup(
+            "<i>Note: Enable logging per-server in Server Management.\n"
+            "Logs are organized by server and date: log_dir/server/channel-YYYY-MM-DD.log</i>"
+        )
+        info.set_line_wrap(True)
+        info.set_halign(Gtk.Align.START)
+        box.pack_start(info, False, False, 0)
 
         return box
 
@@ -265,6 +304,9 @@ class PreferencesDialog(Gtk.Dialog):
         # Display settings
         self.show_timestamps.set_active(self.config.should_show_timestamps())
 
+        # Logging settings
+        self.log_directory_entry.set_text(self.config.get_log_directory())
+
     def _save_preferences(self) -> None:
         """Save preferences"""
 
@@ -295,6 +337,37 @@ class PreferencesDialog(Gtk.Dialog):
             "announce_mentions_only": announce_mentions,
             "announce_joins_parts": self.announce_joins_parts.get_active()
         })
+
+        # Logging settings
+        log_dir = self.log_directory_entry.get_text().strip()
+        self.config.set_log_directory(log_dir)
+
+        # Update log manager with new directory if it exists
+        if self.log_manager:
+            # Get list of connected servers from parent window (thread-safe)
+            connected_servers = []
+            parent = self.get_transient_for()
+            if parent and hasattr(parent, 'irc_manager'):
+                irc_mgr = parent.irc_manager
+                # Use lock to safely read connections dict
+                with irc_mgr._connections_lock:
+                    connected_servers = list(irc_mgr.connections.keys())
+
+            # Update log directory and create server directories
+            try:
+                self.log_manager.set_log_directory(log_dir, connected_servers)
+            except OSError as e:
+                # Show error dialog if directory creation fails
+                error_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    modal=True,
+                    message_type=Gtk.MessageType.ERROR,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Failed to create log directories"
+                )
+                error_dialog.format_secondary_text(str(e))
+                error_dialog.run()
+                error_dialog.destroy()
 
         # Save config file
         self.config.save_config()
@@ -336,6 +409,32 @@ class PreferencesDialog(Gtk.Dialog):
         if response == Gtk.ResponseType.OK:
             filename = dialog.get_filename()
             entry.set_text(filename)
+
+        dialog.destroy()
+
+    def on_browse_log_directory(self, widget) -> None:
+        """Browse for log directory"""
+
+        dialog = Gtk.FileChooserDialog(
+            title="Choose Log Directory",
+            parent=self,
+            action=Gtk.FileChooserAction.SELECT_FOLDER
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
+        )
+
+        # Set current folder if one is already configured
+        current_dir = self.log_directory_entry.get_text().strip()
+        if current_dir and os.path.exists(current_dir):
+            dialog.set_current_folder(current_dir)
+
+        response = dialog.run()
+
+        if response == Gtk.ResponseType.OK:
+            dirname = dialog.get_filename()
+            self.log_directory_entry.set_text(dirname)
 
         dialog.destroy()
 

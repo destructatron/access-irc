@@ -14,6 +14,7 @@ import signal
 from .config_manager import ConfigManager
 from .sound_manager import SoundManager
 from .irc_manager import IRCManager
+from .log_manager import LogManager
 from .gui import AccessibleIRCWindow
 
 
@@ -26,6 +27,7 @@ class AccessIRCApplication:
         # Initialize managers
         self.config = ConfigManager()  # Uses ~/.config/access-irc/config.json by default
         self.sound = SoundManager(self.config)
+        self.log = LogManager(self.config.get_log_directory())
 
         # Create IRC callbacks
         callbacks = {
@@ -47,7 +49,7 @@ class AccessIRCApplication:
 
         # Create main window
         self.window = AccessibleIRCWindow("Access IRC")
-        self.window.set_managers(self.irc, self.sound, self.config)
+        self.window.set_managers(self.irc, self.sound, self.config, self.log)
         self.window.connect("destroy", self.on_window_destroy)
 
         # Handle Ctrl+C gracefully
@@ -96,6 +98,28 @@ class AccessIRCApplication:
 
         return False  # Don't repeat this callback
 
+    def _should_log_server(self, server_name: str) -> bool:
+        """
+        Check if logging is enabled for a server
+
+        Args:
+            server_name: Name of server
+
+        Returns:
+            True if logging should happen for this server
+        """
+        # Check if log directory is configured
+        if not self.config.get_log_directory():
+            return False
+
+        # Check if server has logging enabled
+        servers = self.config.get_servers()
+        for server in servers:
+            if server.get("name") == server_name:
+                return server.get("logging_enabled", False)
+
+        return False
+
     # IRC event callbacks
     def on_irc_connect(self, server_name: str) -> None:
         """Handle IRC connection established"""
@@ -120,6 +144,10 @@ class AccessIRCApplication:
         if not channel.startswith("#"):
             self.window.add_pm_to_tree(server, channel)
 
+        # Log message if enabled for this server
+        if self._should_log_server(server):
+            self.log.log_message(server, channel, sender, message)
+
         # Play appropriate sound
         if self.sound:
             if is_private:
@@ -136,6 +164,10 @@ class AccessIRCApplication:
         if not channel.startswith("#"):
             self.window.add_pm_to_tree(server, channel)
 
+        # Log action if enabled for this server
+        if self._should_log_server(server):
+            self.log.log_action(server, channel, sender, action)
+
         # Play appropriate sound
         if self.sound:
             if is_private:
@@ -149,6 +181,10 @@ class AccessIRCApplication:
 
         # Note: Private notices are now routed to the server buffer instead of
         # opening PM windows, so we don't call add_pm_to_tree here
+
+        # Log notice if enabled for this server
+        if self._should_log_server(server):
+            self.log.log_notice(server, channel, sender, message)
 
     def on_irc_join(self, server: str, channel: str, nick: str) -> None:
         """Handle user join"""
@@ -175,6 +211,10 @@ class AccessIRCApplication:
         if self.window.current_server == server and self.window.current_target == channel:
             self.window.update_users_list()
 
+        # Log join if enabled for this server
+        if self._should_log_server(server):
+            self.log.log_join(server, channel, nick)
+
         # Play join sound and announce if configured
         if self.sound:
             self.sound.play_join()
@@ -194,6 +234,10 @@ class AccessIRCApplication:
         if self.window.current_server == server and self.window.current_target == channel:
             self.window.update_users_list()
 
+        # Log part if enabled for this server
+        if self._should_log_server(server):
+            self.log.log_part(server, channel, nick, reason)
+
         # Play part sound and announce if configured
         if self.sound:
             self.sound.play_part()
@@ -210,6 +254,10 @@ class AccessIRCApplication:
         # Add to all channels where this user was present
         for channel in channels:
             self.window.add_system_message(server, channel, message)
+
+            # Log quit if enabled for this server
+            if self._should_log_server(server):
+                self.log.log_quit(server, channel, nick, reason)
 
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
@@ -250,6 +298,10 @@ class AccessIRCApplication:
                 if new_nick in connection.channel_users[channel]:
                     self.window.add_system_message(server, channel, message)
 
+                    # Log nick change if enabled for this server
+                    if self._should_log_server(server):
+                        self.log.log_nick(server, channel, old_nick, new_nick)
+
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
@@ -287,6 +339,10 @@ class AccessIRCApplication:
             message += f" ({reason})"
 
         self.window.add_system_message(server, channel, message)
+
+        # Log kick if enabled for this server
+        if self._should_log_server(server):
+            self.log.log_kick(server, channel, kicker, kicked, reason)
 
         # Update users list if we're viewing this channel
         if self.window.current_server == server and self.window.current_target == channel:

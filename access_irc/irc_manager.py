@@ -704,6 +704,7 @@ class IRCManager:
         self.config = config_manager
         self.callbacks = callbacks
         self.connections: Dict[str, IRCConnection] = {}
+        self._connections_lock = threading.Lock()  # Protect connections dict access
 
     def connect_server(self, server_config: Dict[str, Any]) -> bool:
         """

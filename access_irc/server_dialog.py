@@ -346,6 +346,12 @@ class ServerEditDialog(Gtk.Dialog):
         grid.attach(self.autoconnect_check, 1, row, 1, 1)
         row += 1
 
+        # Enable logging
+        self.logging_enabled_check = Gtk.CheckButton.new_with_mnemonic("Enable _logging")
+        self.logging_enabled_check.set_tooltip_text("Log conversations to disk (configure log directory in Preferences)")
+        grid.attach(self.logging_enabled_check, 1, row, 1, 1)
+        row += 1
+
         # Channels
         label = Gtk.Label.new_with_mnemonic("_Channels (comma-separated):")
         label.set_halign(Gtk.Align.END)
@@ -416,6 +422,7 @@ class ServerEditDialog(Gtk.Dialog):
         self.ssl_check.set_active(self.server.get("ssl", False))
         self.verify_ssl_check.set_active(self.server.get("verify_ssl", True))
         self.autoconnect_check.set_active(self.server.get("autoconnect", False))
+        self.logging_enabled_check.set_active(self.server.get("logging_enabled", False))
 
         channels = self.server.get("channels", [])
         self.channels_entry.set_text(", ".join(channels))
@@ -446,6 +453,7 @@ class ServerEditDialog(Gtk.Dialog):
             "ssl": self.ssl_check.get_active(),
             "verify_ssl": self.verify_ssl_check.get_active(),
             "autoconnect": self.autoconnect_check.get_active(),
+            "logging_enabled": self.logging_enabled_check.get_active(),
             "channels": channels,
             "username": self.username_entry.get_text().strip(),
             "password": self.password_entry.get_text(),  # Don't strip password

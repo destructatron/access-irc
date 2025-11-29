@@ -9,6 +9,7 @@ __license__ = "MIT"
 from .config_manager import ConfigManager
 from .sound_manager import SoundManager
 from .irc_manager import IRCManager, IRCConnection
+from .log_manager import LogManager
 from .gui import AccessibleIRCWindow
 
 __all__ = [
@@ -16,5 +17,6 @@ __all__ = [
     "SoundManager",
     "IRCManager",
     "IRCConnection",
+    "LogManager",
     "AccessibleIRCWindow",
 ]
