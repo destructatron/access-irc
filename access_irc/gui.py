@@ -74,6 +74,9 @@ class AccessibleIRCWindow(Gtk.Window):
         # Connect to realize signal to set paned position after window is sized
         self.connect("realize", self._on_window_realized)
 
+        # Connect to size-allocate to update paned positions when window is resized
+        self.connect("size-allocate", self._on_window_size_allocate)
+
         # Connect key press for window-level shortcuts (like Ctrl+W)
         self.connect("key-press-event", self.on_window_key_press)
 
@@ -364,8 +367,20 @@ class AccessibleIRCWindow(Gtk.Window):
         # Use idle_add to ensure layout is complete before setting positions
         GLib.idle_add(self._set_paned_positions)
 
+    def _on_window_size_allocate(self, widget, allocation) -> None:
+        """Update paned positions when window is resized"""
+        # Only update if the window is actually visible and realized
+        # This prevents unnecessary updates during initial window construction
+        if self.get_realized() and self.get_visible():
+            self._update_paned_positions()
+
     def _set_paned_positions(self) -> bool:
-        """Set paned positions based on window size"""
+        """Set paned positions based on window size (called once on realize)"""
+        self._update_paned_positions()
+        return False  # Don't repeat
+
+    def _update_paned_positions(self) -> None:
+        """Update paned positions based on current window size"""
         # Set main paned position (left panel vs right panel)
         if self.main_paned:
             # Give left panel 250px for server/channel tree
@@ -386,8 +401,6 @@ class AccessibleIRCWindow(Gtk.Window):
             position = max(available_width - users_width, available_width // 2)
 
             self.h_paned.set_position(position)
-
-        return False  # Don't repeat
 
     def set_managers(self, irc_manager, sound_manager, config_manager) -> None:
         """
