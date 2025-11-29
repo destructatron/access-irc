@@ -2,7 +2,7 @@
 Access IRC - An accessible IRC client for Linux with screen reader support
 """
 
-__version__ = "1.1.0"
+__version__ = "1.2.0"
 __author__ = "Access IRC Contributors"
 __license__ = "MIT"
 
