@@ -373,12 +373,21 @@ class ServerEditDialog(Gtk.Dialog):
         # Password
         label = Gtk.Label.new_with_mnemonic("Pass_word:")
         label.set_halign(Gtk.Align.END)
+        password_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
         self.password_entry = Gtk.Entry()
         self.password_entry.set_visibility(False)  # Hide password
         self.password_entry.set_placeholder_text("Server/bouncer password")
         label.set_mnemonic_widget(self.password_entry)
+        password_hbox.pack_start(self.password_entry, True, True, 0)
+
+        # Show password toggle
+        show_password_check = Gtk.CheckButton.new_with_mnemonic("_Show password")
+        show_password_check.connect("toggled", lambda w:
+            self.password_entry.set_visibility(w.get_active()))
+        password_hbox.pack_start(show_password_check, False, False, 0)
+
         grid.attach(label, 0, row, 1, 1)
-        grid.attach(self.password_entry, 1, row, 1, 1)
+        grid.attach(password_hbox, 1, row, 1, 1)
         row += 1
 
         # SASL
