@@ -371,8 +371,9 @@ class IRCConnection:
 
             # Check if it's a private notice or channel notice
             is_private = target == self.nickname
-            # For private notices, use the sender's nickname as the target
-            channel = sender if is_private else target
+            # For private notices, use the server name as the target (routes to server buffer)
+            # This prevents opening PM windows for every notice
+            channel = self.server_name if is_private else target
 
             # Strip IRC formatting codes from notice message
             clean_message = strip_irc_formatting(message)

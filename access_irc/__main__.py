@@ -126,9 +126,8 @@ class AccessIRCApplication:
         """Handle incoming IRC notice"""
         self.window.add_notice_message(server, channel, sender, message)
 
-        # If this is a private notice (channel doesn't start with #), add it to the tree
-        if not channel.startswith("#"):
-            self.window.add_pm_to_tree(server, channel)
+        # Note: Private notices are now routed to the server buffer instead of
+        # opening PM windows, so we don't call add_pm_to_tree here
 
     def on_irc_join(self, server: str, channel: str, nick: str) -> None:
         """Handle user join"""
