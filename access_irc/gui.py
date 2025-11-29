@@ -48,6 +48,9 @@ class AccessibleIRCWindow(Gtk.Window):
         # Track "Private Messages" folder iter per server: Dict[server_name, TreeIter]
         self.pm_folder_iters: Dict[str, Gtk.TreeIter] = {}
 
+        # Track "Mentions" buffer iter per server: Dict[server_name, TreeIter]
+        self.mentions_iters: Dict[str, Gtk.TreeIter] = {}
+
         # Reference to paned widget for resizing
         self.h_paned = None
 
@@ -59,6 +62,11 @@ class AccessibleIRCWindow(Gtk.Window):
         self.tab_completion_index = 0
         self.tab_completion_word_start = 0
         self.tab_completion_original_after = ""
+
+        # Temporary announcement mode (can be toggled with Ctrl+S without saving)
+        # None means use config settings, otherwise overrides config
+        # Values: "all", "mentions", "none"
+        self.temp_announcement_mode = None
 
         # Build UI
         self._build_ui()
@@ -416,6 +424,49 @@ class AccessibleIRCWindow(Gtk.Window):
             except Exception as e2:
                 print(f"Failed to emit accessibility announcement: {e2}")
 
+    def toggle_announcement_mode(self) -> None:
+        """
+        Toggle between announcement modes: all messages -> mentions only -> none -> all messages
+        This is a temporary toggle that doesn't save to config
+        """
+        # Determine current mode (either from temp override or from config)
+        if self.temp_announcement_mode is None:
+            # Using config settings - determine what mode we're in
+            if self.config_manager.should_announce_all_messages():
+                current_mode = "all"
+            elif self.config_manager.should_announce_mentions():
+                current_mode = "mentions"
+            else:
+                current_mode = "none"
+        else:
+            current_mode = self.temp_announcement_mode
+
+        # Cycle to next mode
+        if current_mode == "all":
+            self.temp_announcement_mode = "mentions"
+            announcement = "Announcing mentions only"
+        elif current_mode == "mentions":
+            self.temp_announcement_mode = "none"
+            announcement = "Announcements disabled"
+        else:  # none
+            self.temp_announcement_mode = "all"
+            announcement = "Announcing all messages"
+
+        # Announce the new mode
+        self.announce_to_screen_reader(announcement)
+
+    def should_announce_all_messages(self) -> bool:
+        """Check if all messages should be announced (respecting temporary override)"""
+        if self.temp_announcement_mode is not None:
+            return self.temp_announcement_mode == "all"
+        return self.config_manager.should_announce_all_messages() if self.config_manager else False
+
+    def should_announce_mentions(self) -> bool:
+        """Check if mentions should be announced (respecting temporary override)"""
+        if self.temp_announcement_mode is not None:
+            return self.temp_announcement_mode in ("all", "mentions")
+        return self.config_manager.should_announce_mentions() if self.config_manager else False
+
     def add_message(self, server: str, target: str, sender: str, message: str,
                    is_mention: bool = False, is_system: bool = False) -> None:
         """
@@ -460,8 +511,12 @@ class AccessibleIRCWindow(Gtk.Window):
 
         # Handle announcements and sounds
         if is_mention:
+            # Add to mentions buffer if this is a channel mention (not PM)
+            if target.startswith("#"):
+                self.add_message_to_mentions_buffer(server, target, sender, message)
+
             # Announce mention to screen reader (if mentions OR all messages is enabled)
-            if self.config_manager.should_announce_mentions() or self.config_manager.should_announce_all_messages():
+            if self.should_announce_mentions():
                 self.announce_to_screen_reader(f"{sender} mentioned you in {target}: {message}")
 
             # Play mention sound
@@ -470,7 +525,7 @@ class AccessibleIRCWindow(Gtk.Window):
 
         elif not is_system:
             # Regular message
-            if self.config_manager.should_announce_all_messages():
+            if self.should_announce_all_messages():
                 self.announce_to_screen_reader(f"{sender} in {target}: {message}")
 
             # Play message sound
@@ -527,7 +582,7 @@ class AccessibleIRCWindow(Gtk.Window):
             self._scroll_to_bottom()
 
         # Announce to screen reader if configured
-        if self.config_manager.should_announce_all_messages():
+        if self.should_announce_all_messages():
             self.announce_to_screen_reader(f"{sender} {action}")
 
         # Play message sound
@@ -568,12 +623,52 @@ class AccessibleIRCWindow(Gtk.Window):
             self._scroll_to_bottom()
 
         # Announce to screen reader if configured
-        if self.config_manager.should_announce_all_messages():
+        if self.should_announce_all_messages():
             self.announce_to_screen_reader(f"Notice from {sender}: {message}")
 
         # Play notice sound
         if self.sound_manager:
             self.sound_manager.play_notice()
+
+    def add_message_to_mentions_buffer(self, server: str, channel: str, sender: str, message: str) -> None:
+        """
+        Add message to mentions buffer (without AT-SPI announcement to avoid duplicates)
+
+        Args:
+            server: Server name
+            channel: Channel where mention occurred
+            sender: Message sender
+            message: Message text
+        """
+        # Get or create the mentions buffer for this server
+        mentions_iter = self._get_or_create_mentions_buffer(server)
+        if not mentions_iter:
+            return
+
+        # Get or create buffer for mentions
+        key = (server, "mentions")
+        if key not in self.message_buffers:
+            self.message_buffers[key] = Gtk.TextBuffer()
+
+        buffer = self.message_buffers[key]
+
+        # Format message with timestamp and channel prefix
+        if self.config_manager.should_show_timestamps():
+            timestamp = datetime.now().strftime("%H:%M:%S")
+            formatted = f"[{timestamp}] {channel}: <{sender}> {message}\n"
+        else:
+            formatted = f"{channel}: <{sender}> {message}\n"
+
+        # Add to buffer at the end
+        end_iter = buffer.get_end_iter()
+        buffer.insert(end_iter, formatted)
+
+        # If this is the current view, update display and scroll
+        if self.current_server == server and self.current_target == "mentions":
+            self.message_view.set_buffer(buffer)
+            self._scroll_to_bottom()
+
+        # NOTE: No AT-SPI announcements or sounds here to avoid duplicates
 
     def update_users_list(self, server: str = None, channel: str = None) -> None:
         """
@@ -654,6 +749,9 @@ class AccessibleIRCWindow(Gtk.Window):
                     del self.pm_iters[server_name]
                 if server_name in self.pm_folder_iters:
                     del self.pm_folder_iters[server_name]
+                # Clean up mentions tracking for this server
+                if server_name in self.mentions_iters:
+                    del self.mentions_iters[server_name]
                 break
             iter = self.tree_store.iter_next(iter)
 
@@ -695,6 +793,41 @@ class AccessibleIRCWindow(Gtk.Window):
             self.pm_iters[server_name] = {}
 
         return pm_folder_iter
+
+    def _get_or_create_mentions_buffer(self, server_name: str) -> Gtk.TreeIter:
+        """
+        Get or create the "Mentions" buffer for a server
+
+        Args:
+            server_name: Name of server
+
+        Returns:
+            TreeIter for the mentions buffer
+        """
+        # Return existing buffer if it exists
+        if server_name in self.mentions_iters:
+            return self.mentions_iters[server_name]
+
+        # Find the server's tree iter
+        server_iter = None
+        iter = self.tree_store.get_iter_first()
+        while iter:
+            if self.tree_store.get_value(iter, 0) == server_name:
+                server_iter = iter
+                break
+            iter = self.tree_store.iter_next(iter)
+
+        if not server_iter:
+            return None
+
+        # Create "Mentions" buffer under the server
+        mentions_iter = self.tree_store.append(
+            server_iter,
+            ["Mentions", f"mentions:{server_name}"]
+        )
+        self.mentions_iters[server_name] = mentions_iter
+
+        return mentions_iter
 
     def add_pm_to_tree(self, server_name: str, username: str) -> Gtk.TreeIter:
         """
@@ -802,6 +935,13 @@ class AccessibleIRCWindow(Gtk.Window):
                 self.current_target = None
                 self.channel_label.set_text(f"{server_name} / Private Messages")
 
+            elif identifier.startswith("mentions:"):
+                # Mentions buffer selected
+                server_name = identifier.split(":", 1)[1]
+                self.current_server = server_name
+                self.current_target = "mentions"
+                self.channel_label.set_text(f"{server_name} / Mentions")
+
             # Load message buffer for this context
             key = (self.current_server, self.current_target)
             if key in self.message_buffers:
@@ -828,6 +968,12 @@ class AccessibleIRCWindow(Gtk.Window):
                 # It's a channel - leave it
                 self.on_part_channel(None)
                 return True
+
+        # Ctrl+S - Toggle announcement mode
+        if event.keyval == Gdk.KEY_s and event.state & Gdk.ModifierType.CONTROL_MASK:
+            self.toggle_announcement_mode()
+            return True
+
         return False
 
     def on_tree_button_press(self, widget, event) -> bool:
