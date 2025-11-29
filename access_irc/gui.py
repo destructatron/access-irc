@@ -195,6 +195,25 @@ class AccessibleIRCWindow(Gtk.Window):
         self.tree_view = Gtk.TreeView(model=self.tree_store)
         self.tree_view.set_headers_visible(False)
 
+        # Set accessible properties for screen readers
+        accessible = self.tree_view.get_accessible()
+        if accessible:
+            accessible.set_name("Servers and Channels")
+
+            # Link the label to the tree view using ATK relations
+            try:
+                from gi.repository import Atk
+                label_accessible = label.get_accessible()
+                if label_accessible:
+                    relation_set = accessible.ref_relation_set()
+                    relation = Atk.Relation.new(
+                        [label_accessible],
+                        Atk.RelationType.LABELLED_BY
+                    )
+                    relation_set.add(relation)
+            except Exception:
+                pass  # ATK relations not critical, continue without them
+
         renderer = Gtk.CellRendererText()
         column = Gtk.TreeViewColumn("Name", renderer, text=0)
         self.tree_view.append_column(column)
@@ -943,6 +962,20 @@ class AccessibleIRCWindow(Gtk.Window):
             # Update entry
             self.message_entry.set_text(new_text)
             self.message_entry.set_position(new_cursor_pos)
+
+            # Announce match position with a small delay so screen reader reads username first
+            match_position = self.tab_completion_index + 1
+            total_matches = len(self.tab_completion_matches)
+
+            def announce_match_position():
+                if total_matches == 1:
+                    self.announce_to_screen_reader("1 match")
+                else:
+                    self.announce_to_screen_reader(f"match {match_position} of {total_matches}")
+                return False  # Don't repeat
+
+            # Delay announcement by 150ms to let Orca announce the text change first
+            GLib.timeout_add(150, announce_match_position)
 
             return True  # Consume the event
         else:
