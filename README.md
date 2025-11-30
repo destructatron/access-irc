@@ -13,6 +13,7 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 - Configurable announcement settings: all messages, mentions only, or custom
 - Full keyboard navigation with mnemonics (Alt+key shortcuts)
 - Properly labeled form inputs and navigable message history
+- Spell checking in message input (requires gspell)
 
 ### IRC Functionality
 - Multi-server support with autoconnect option
@@ -40,28 +41,32 @@ sudo apt update
 sudo apt install python3 python3-pip python3-venv \
   libgirepository1.0-dev gcc libcairo2-dev pkg-config \
   gir1.2-gtk-3.0 at-spi2-core \
-  gstreamer1.0-plugins-base gstreamer1.0-plugins-good
+  gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+  gir1.2-gspell-1 libgspell-1-dev
 ```
 
 **Fedora:**
 ```bash
 sudo dnf install python3 python3-devel python3-pip \
   gobject-introspection-devel cairo-devel pkg-config gtk3 at-spi2-core gcc \
-  gstreamer1-plugins-base gstreamer1-plugins-good
+  gstreamer1-plugins-base gstreamer1-plugins-good \
+  gspell-devel
 ```
 
 **Arch Linux:**
 ```bash
 sudo pacman -S python python-pip \
   gobject-introspection cairo pkgconf gtk3 at-spi2-core base-devel \
-  gst-plugins-base gst-plugins-good python-gobject
+  gst-plugins-base gst-plugins-good python-gobject \
+  gspell
 ```
 
 **Gentoo:**
 ```bash
 sudo emerge -av dev-libs/gobject-introspection x11-libs/gtk+ \
   app-accessibility/at-spi2-core dev-util/pkgconfig \
-  media-libs/gst-plugins-base media-libs/gst-plugins-good dev-python/pygobject
+  media-libs/gst-plugins-base media-libs/gst-plugins-good dev-python/pygobject \
+  app-text/gspell
 ```
 
 ### Application Setup
@@ -178,6 +183,7 @@ Logs are automatically rotated daily (new file each day) and organized by server
 - `Ctrl+W` - Close current PM or leave channel
 - Arrow keys - Navigate message history or tree view
 - `Enter` - Send message (in input field)
+- `Shift+Enter` - Insert new line in message input (allows multi-line messages)
 
 ### IRC Commands
 

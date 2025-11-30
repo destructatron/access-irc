@@ -12,6 +12,15 @@ from gi.repository import Gtk, Gdk, GLib, Pango
 from typing import Optional, Dict, Tuple
 from datetime import datetime
 
+# Try to import gtkspell for spell checking
+try:
+    gi.require_version('Gspell', '1')
+    from gi.repository import Gspell
+    GSPELL_AVAILABLE = True
+except (ValueError, ImportError):
+    GSPELL_AVAILABLE = False
+    print("Warning: Gspell not available. Spell checking will be disabled.")
+
 
 class AccessibleIRCWindow(Gtk.Window):
     """Main window for accessible IRC client"""
@@ -340,14 +349,56 @@ class AccessibleIRCWindow(Gtk.Window):
         input_label = Gtk.Label.new_with_mnemonic("_Message:")
         input_box.pack_start(input_label, False, False, 0)
 
-        # Entry for message input
-        self.message_entry = Gtk.Entry()
-        self.message_entry.set_placeholder_text("Use / for commands. Tab to autocomplete nicknames.")
+        # ScrolledWindow for message input (to support multi-line and spell checking)
+        message_scrolled = Gtk.ScrolledWindow()
+        message_scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        message_scrolled.set_min_content_height(60)  # Small height for ~2-3 lines
+        message_scrolled.set_max_content_height(120)  # Limit max height to ~4-5 lines
 
-        self.message_entry.connect("activate", self.on_send_message)
+        # TextView for message input (supports spell checking)
+        self.message_entry = Gtk.TextView()
+        self.message_entry.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.message_entry.set_left_margin(6)
+        self.message_entry.set_right_margin(6)
+        self.message_entry.set_top_margin(3)
+        self.message_entry.set_bottom_margin(3)
+        self.message_entry.set_accepts_tab(False)  # Tab should move focus/complete, not insert tab
+
+        # Set monospace font to match message view
+        font_desc = Pango.FontDescription("monospace 10")
+        self.message_entry.modify_font(font_desc)
+
+        # Add spell checking if available
+        if GSPELL_AVAILABLE:
+            try:
+                # Get the default language
+                language = Gspell.Language.get_default()
+                if language is None:
+                    # Fallback to English if no default language
+                    language = Gspell.Language.lookup("en_US")
+
+                if language is not None:
+                    # Create checker with the language
+                    checker = Gspell.Checker.new(language)
+
+                    # Get the text buffer and wrap it with Gspell
+                    text_buffer = self.message_entry.get_buffer()
+                    gspell_buffer = Gspell.TextBuffer.get_from_gtk_text_buffer(text_buffer)
+                    gspell_buffer.set_spell_checker(checker)
+
+                    # Get the text view and wrap it with Gspell
+                    gspell_view = Gspell.TextView.get_from_gtk_text_view(self.message_entry)
+                    gspell_view.set_inline_spell_checking(True)
+                    gspell_view.set_enable_language_menu(True)
+                else:
+                    print("Warning: No spell checking language available")
+            except Exception as e:
+                print(f"Warning: Failed to enable spell checking: {e}")
+
         self.message_entry.connect("key-press-event", self.on_message_entry_key_press)
         input_label.set_mnemonic_widget(self.message_entry)
-        input_box.pack_start(self.message_entry, True, True, 0)
+        message_scrolled.add(self.message_entry)
+        input_box.pack_start(message_scrolled, True, True, 0)
 
         # Send button
         send_button = Gtk.Button(label="Send")
@@ -1139,16 +1190,28 @@ class AccessibleIRCWindow(Gtk.Window):
                 menu.popup(None, None, None, None, event_or_time.button, event_or_time.time)
 
     def on_message_entry_key_press(self, widget, event) -> bool:
-        """Handle key press in message entry for tab completion"""
+        """Handle key press in message entry for tab completion and Enter to send"""
+        # Handle Enter key to send message (but allow Shift+Enter for new line)
+        if event.keyval in (Gdk.KEY_Return, Gdk.KEY_KP_Enter):
+            if not (event.state & Gdk.ModifierType.SHIFT_MASK):
+                # Enter without Shift - send message
+                self.on_send_message(None)
+                return True  # Consume the event
+            # Shift+Enter - allow default behavior (insert newline)
+            return False
+
         # Handle Tab key for nickname completion
         if event.keyval == Gdk.KEY_Tab or event.keyval == Gdk.KEY_ISO_Left_Tab:
             # Only do completion in channels (not PMs or server views)
             if not self.current_target or not self.current_target.startswith("#"):
                 return False
 
-            # Get current text and cursor position
-            text = self.message_entry.get_text()
-            cursor_pos = self.message_entry.get_position()
+            # Get current text and cursor position from TextBuffer
+            buffer = self.message_entry.get_buffer()
+            text = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True)
+            cursor_mark = buffer.get_insert()
+            cursor_iter = buffer.get_iter_at_mark(cursor_mark)
+            cursor_pos = cursor_iter.get_offset()
 
             # If this is the first Tab press, find matches
             if not self.tab_completion_matches:
@@ -1211,9 +1274,11 @@ class AccessibleIRCWindow(Gtk.Window):
                 new_text = before + completion + " " + after
                 new_cursor_pos = len(before) + len(completion) + 1
 
-            # Update entry
-            self.message_entry.set_text(new_text)
-            self.message_entry.set_position(new_cursor_pos)
+            # Update TextView buffer
+            buffer.set_text(new_text)
+            # Set cursor position
+            cursor_iter = buffer.get_iter_at_offset(new_cursor_pos)
+            buffer.place_cursor(cursor_iter)
 
             # Announce match position with a small delay so screen reader reads username first
             match_position = self.tab_completion_index + 1
@@ -1239,7 +1304,9 @@ class AccessibleIRCWindow(Gtk.Window):
 
     def on_send_message(self, widget) -> None:
         """Handle send message"""
-        message = self.message_entry.get_text().strip()
+        # Get text from TextView buffer
+        buffer = self.message_entry.get_buffer()
+        message = buffer.get_text(buffer.get_start_iter(), buffer.get_end_iter(), True).strip()
 
         if not message:
             return
@@ -1260,8 +1327,8 @@ class AccessibleIRCWindow(Gtk.Window):
                 nickname = self.config_manager.get_nickname() if self.config_manager else "You"
                 self.add_message(self.current_server, self.current_target, nickname, message)
 
-        # Clear entry
-        self.message_entry.set_text("")
+        # Clear TextView buffer
+        buffer.set_text("")
 
         # Reset tab completion state when sending
         self.tab_completion_matches = []
