@@ -2084,6 +2084,7 @@ class ChannelListDialog(Gtk.Dialog):
         if self.current_page > 0:
             self.current_page -= 1
             self.update_page()
+            self.announce_range()
 
     def on_next_clicked(self, button) -> None:
         """Handle Next button click"""
@@ -2091,6 +2092,20 @@ class ChannelListDialog(Gtk.Dialog):
         if (self.current_page + 1) * self.PAGE_SIZE < total_filtered:
             self.current_page += 1
             self.update_page()
+            self.announce_range()
+
+    def announce_range(self) -> None:
+        """Announce current channel range to screen reader"""
+        total_filtered = len(self.filtered_channels)
+        start_idx = self.current_page * self.PAGE_SIZE
+        end_idx = min(start_idx + self.PAGE_SIZE, total_filtered)
+
+        message = f"Showing channels {start_idx + 1} to {end_idx} of {total_filtered}"
+
+        # Get parent window and announce
+        parent = self.get_transient_for()
+        if parent and hasattr(parent, 'announce_to_screen_reader'):
+            parent.announce_to_screen_reader(message)
 
     def on_row_activated(self, tree_view, path, column) -> None:
         """Handle double-click or Enter on a row"""
