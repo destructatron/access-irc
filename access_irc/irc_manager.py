@@ -179,7 +179,9 @@ class IRCConnection:
                 # Extract action text
                 action = message[8:-1]  # Remove \x01ACTION and trailing \x01
                 # Strip IRC formatting codes from action
-                action = strip_irc_formatting(action)
+                clean_action = strip_irc_formatting(action)
+                # Check if nickname is mentioned in the action (check both original and clean)
+                is_mention = self.nickname.lower() in action.lower() or self.nickname.lower() in clean_action.lower()
                 # Call on_action callback
                 GLib.idle_add(
                     self._call_callback,
@@ -187,7 +189,8 @@ class IRCConnection:
                     self.server_name,
                     channel,
                     sender,
-                    action,
+                    clean_action,
+                    is_mention,
                     is_private
                 )
             else:

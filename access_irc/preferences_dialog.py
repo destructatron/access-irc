@@ -344,14 +344,22 @@ class PreferencesDialog(Gtk.Dialog):
 
         # Update log manager with new directory if it exists
         if self.log_manager:
-            # Get list of connected servers from parent window (thread-safe)
+            # Get list of connected servers that have logging enabled (thread-safe)
             connected_servers = []
             parent = self.get_transient_for()
             if parent and hasattr(parent, 'irc_manager'):
                 irc_mgr = parent.irc_manager
                 # Use lock to safely read connections dict
                 with irc_mgr._connections_lock:
-                    connected_servers = list(irc_mgr.connections.keys())
+                    connected_server_names = list(irc_mgr.connections.keys())
+
+                # Filter to only include servers with logging enabled
+                for server_name in connected_server_names:
+                    for server_config in self.config.get_servers():
+                        if server_config.get("name") == server_name:
+                            if server_config.get("logging_enabled", False):
+                                connected_servers.append(server_name)
+                            break
 
             # Update log directory and create server directories
             try:

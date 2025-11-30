@@ -68,6 +68,10 @@ class AccessibleIRCWindow(Gtk.Window):
         # Values: "all", "mentions", "none"
         self.temp_announcement_mode = None
 
+        # Announcement queue to prevent overwhelming AT-SPI2 with rapid announcements
+        self.announcement_queue = []
+        self.announcement_timer_id = None
+
         # Build UI
         self._build_ui()
 
@@ -419,7 +423,46 @@ class AccessibleIRCWindow(Gtk.Window):
 
     def announce_to_screen_reader(self, message: str) -> None:
         """
-        Send announcement to screen reader via AT-SPI2
+        Queue announcement to screen reader via AT-SPI2
+        Uses a queue with delays to prevent overwhelming AT-SPI2/Orca
+
+        Args:
+            message: Message to announce
+        """
+        # Add to queue
+        self.announcement_queue.append(message)
+
+        # If timer isn't running, start processing queue
+        if self.announcement_timer_id is None:
+            self._process_announcement_queue()
+
+    def _process_announcement_queue(self) -> bool:
+        """
+        Process next announcement in queue
+        Returns False to stop timer if queue is empty
+        """
+        if not self.announcement_queue:
+            self.announcement_timer_id = None
+            return False  # Stop timer
+
+        # Get next announcement
+        message = self.announcement_queue.pop(0)
+
+        # Send it via AT-SPI2
+        self._emit_announcement(message)
+
+        # Schedule next announcement if queue not empty
+        if self.announcement_queue:
+            # Wait 100ms before next announcement to avoid overwhelming AT-SPI2
+            self.announcement_timer_id = GLib.timeout_add(100, self._process_announcement_queue)
+            return False  # Current timer done, new one scheduled
+        else:
+            self.announcement_timer_id = None
+            return False  # Queue empty, stop timer
+
+    def _emit_announcement(self, message: str) -> None:
+        """
+        Actually emit the AT-SPI2 announcement
 
         Args:
             message: Message to announce
@@ -428,16 +471,19 @@ class AccessibleIRCWindow(Gtk.Window):
             # Get accessible object from main window
             atk_object = self.get_accessible()
 
-            # Emit notification signal for screen readers
-            # This signal will be picked up by Orca and read aloud
-            atk_object.emit("notification", message)
-        except Exception as e:
-            # Fallback to older announcement signal
+            if not atk_object:
+                print("Warning: No accessible object available for announcement")
+                return
+
+            # Try announcement signal first (this is what works for normal messages)
             try:
-                atk_object = self.get_accessible()
                 atk_object.emit("announcement", message)
-            except Exception as e2:
-                print(f"Failed to emit accessibility announcement: {e2}")
+            except Exception as e:
+                # Fallback to notification signal
+                print(f"Warning: Failed to emit 'announcement' signal: {e}")
+                atk_object.emit("notification", message)
+        except Exception as e:
+            print(f"Error: Failed to emit accessibility announcement: {e}")
 
     def toggle_announcement_mode(self) -> None:
         """
@@ -480,7 +526,16 @@ class AccessibleIRCWindow(Gtk.Window):
         """Check if mentions should be announced (respecting temporary override)"""
         if self.temp_announcement_mode is not None:
             return self.temp_announcement_mode in ("all", "mentions")
-        return self.config_manager.should_announce_mentions() if self.config_manager else False
+
+        # Mentions should be announced if EITHER:
+        # 1. "Announce mentions only" is enabled, OR
+        # 2. "Announce all messages" is enabled (which includes mentions)
+        if self.config_manager:
+            announce_all = self.config_manager.should_announce_all_messages()
+            announce_mentions = self.config_manager.should_announce_mentions()
+            return announce_all or announce_mentions
+
+        return False
 
     def add_message(self, server: str, target: str, sender: str, message: str,
                    is_mention: bool = False, is_system: bool = False) -> None:
@@ -563,7 +618,7 @@ class AccessibleIRCWindow(Gtk.Window):
         if announce:
             self.announce_to_screen_reader(message)
 
-    def add_action_message(self, server: str, target: str, sender: str, action: str) -> None:
+    def add_action_message(self, server: str, target: str, sender: str, action: str, is_mention: bool = False) -> None:
         """
         Add CTCP ACTION message (/me)
 
@@ -572,6 +627,7 @@ class AccessibleIRCWindow(Gtk.Window):
             target: Channel or PM recipient
             sender: User performing the action
             action: Action text
+            is_mention: Whether the user is mentioned in this action
         """
         # Get or create buffer for this server/target
         key = (server, target)
@@ -596,13 +652,42 @@ class AccessibleIRCWindow(Gtk.Window):
             self.message_view.set_buffer(buffer)
             self._scroll_to_bottom()
 
-        # Announce to screen reader if configured
-        if self.should_announce_all_messages():
-            self.announce_to_screen_reader(f"{sender} {action}")
+        # Handle mentions
+        if is_mention:
+            # Add to mentions buffer if this is a channel mention (not PM)
+            if target.startswith("#"):
+                # Add action to mentions buffer
+                mentions_iter = self._get_or_create_mentions_buffer(server)
+                if mentions_iter:
+                    key = (server, "mentions")
+                    if key not in self.message_buffers:
+                        self.message_buffers[key] = Gtk.TextBuffer()
+                    mentions_buffer = self.message_buffers[key]
 
-        # Play message sound
-        if self.sound_manager:
-            self.sound_manager.play_message()
+                    # Format with channel prefix
+                    if self.config_manager.should_show_timestamps():
+                        timestamp = datetime.now().strftime("%H:%M:%S")
+                        mentions_formatted = f"[{timestamp}] {target}: * {sender} {action}\n"
+                    else:
+                        mentions_formatted = f"{target}: * {sender} {action}\n"
+
+                    end_iter = mentions_buffer.get_end_iter()
+                    mentions_buffer.insert(end_iter, mentions_formatted)
+
+                    # Update view if mentions buffer is visible
+                    if self.current_server == server and self.current_target == "mentions":
+                        self.message_view.set_buffer(mentions_buffer)
+                        self._scroll_to_bottom()
+
+            # Announce mention to screen reader
+            if self.should_announce_mentions():
+                self.announce_to_screen_reader(f"{sender} {action}")
+        else:
+            # Regular action (not a mention)
+            if self.should_announce_all_messages():
+                self.announce_to_screen_reader(f"{sender} {action}")
+
+        # Note: Sound is played in __main__.py to avoid duplicates
 
     def add_notice_message(self, server: str, target: str, sender: str, message: str) -> None:
         """

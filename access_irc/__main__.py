@@ -156,9 +156,9 @@ class AccessIRCApplication:
                 # Only play message sound if it's not a mention (mentions have their own sound)
                 self.sound.play_message()
 
-    def on_irc_action(self, server: str, channel: str, sender: str, action: str, is_private: bool) -> None:
+    def on_irc_action(self, server: str, channel: str, sender: str, action: str, is_mention: bool, is_private: bool) -> None:
         """Handle incoming IRC action (/me)"""
-        self.window.add_action_message(server, channel, sender, action)
+        self.window.add_action_message(server, channel, sender, action, is_mention=is_mention)
 
         # If this is a PM (channel doesn't start with #), add it to the tree
         if not channel.startswith("#"):
@@ -172,6 +172,9 @@ class AccessIRCApplication:
         if self.sound:
             if is_private:
                 self.sound.play_privmsg()
+            elif is_mention:
+                # Play mention sound for actions that mention the user
+                self.sound.play_mention()
             else:
                 self.sound.play_message()
 
