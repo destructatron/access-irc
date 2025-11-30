@@ -1363,7 +1363,7 @@ class AccessibleIRCWindow(Gtk.Window):
             # /msg <nick> <message> - Send private message
             msg_parts = args.split(None, 1)
             if len(msg_parts) >= 2:
-                nick = msg_parts[0]
+                nick = msg_parts[0].lstrip('@+%~&')
                 message = msg_parts[1]
                 if self.irc_manager:
                     # Send the message
@@ -1385,7 +1385,7 @@ class AccessibleIRCWindow(Gtk.Window):
             # /query <nick> [message] - Open PM window, optionally send message
             query_parts = args.split(None, 1)
             if len(query_parts) >= 1:
-                nick = query_parts[0]
+                nick = query_parts[0].lstrip('@+%~&')
                 message = query_parts[1] if len(query_parts) > 1 else None
                 # Open PM window
                 pm_iter = self.add_pm_to_tree(self.current_server, nick)
@@ -1441,16 +1441,17 @@ class AccessibleIRCWindow(Gtk.Window):
             if self.irc_manager:
                 connection = self.irc_manager.connections.get(self.current_server)
                 if connection and connection.irc:
-                    connection.irc.quote(f"WHOIS {args}")
+                    nick = args.lstrip('@+%~&')
+                    connection.irc.quote(f"WHOIS {nick}")
                     self.add_system_message(self.current_server, self.current_target,
-                                           f"Sent WHOIS query for {args}")
+                                           f"Sent WHOIS query for {nick}")
 
         elif cmd == "/kick":
             # /kick <nick> [reason] - Kick a user from channel
             if self.current_target and self.current_target.startswith("#"):
                 kick_parts = args.split(None, 1)
                 if len(kick_parts) >= 1:
-                    nick = kick_parts[0]
+                    nick = kick_parts[0].lstrip('@+%~&')
                     reason = kick_parts[1] if len(kick_parts) > 1 else ""
                     if self.irc_manager:
                         connection = self.irc_manager.connections.get(self.current_server)
@@ -1493,7 +1494,7 @@ class AccessibleIRCWindow(Gtk.Window):
             # /invite <nick> [channel] - Invite user to channel
             invite_parts = args.split(None, 1)
             if len(invite_parts) >= 1:
-                nick = invite_parts[0]
+                nick = invite_parts[0].lstrip('@+%~&')
                 channel = invite_parts[1] if len(invite_parts) > 1 else self.current_target
                 if channel and channel.startswith("#"):
                     if self.irc_manager:
@@ -1742,6 +1743,9 @@ class AccessibleIRCWindow(Gtk.Window):
         if not self.current_server:
             return
 
+        # Strip mode prefixes from username
+        username = username.lstrip('@+%~&')
+
         # Add PM to tree (or get existing)
         pm_iter = self.add_pm_to_tree(self.current_server, username)
 
@@ -1790,9 +1794,11 @@ class AccessibleIRCWindow(Gtk.Window):
             # Send raw WHOIS command
             connection = self.irc_manager.connections.get(self.current_server)
             if connection and connection.irc:
-                connection.irc.quote(f"WHOIS {username}")
+                # Strip mode prefixes before sending WHOIS
+                nick = username.lstrip('@+%~&')
+                connection.irc.quote(f"WHOIS {nick}")
                 self.add_system_message(self.current_server, self.current_target,
-                                       f"Sent WHOIS query for {username}")
+                                       f"Sent WHOIS query for {nick}")
 
     def on_quit(self, widget) -> None:
         """Quit application"""
