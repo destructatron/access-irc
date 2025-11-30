@@ -889,6 +889,33 @@ class AccessibleIRCWindow(Gtk.Window):
         server_name = self.tree_store.get_value(server_iter, 0)
         return self.tree_store.append(server_iter, [channel, f"channel:{server_name}:{channel}"])
 
+    def remove_channel_from_tree(self, server_name: str, channel: str) -> None:
+        """
+        Remove channel from tree view
+
+        Args:
+            server_name: Name of server
+            channel: Channel name to remove
+        """
+        # Find the server node
+        iter = self.tree_store.get_iter_first()
+        while iter:
+            if self.tree_store.get_value(iter, 0) == server_name:
+                # Found server, now find channel among its children
+                child_iter = self.tree_store.iter_children(iter)
+                while child_iter:
+                    identifier = self.tree_store.get_value(child_iter, 1)
+                    if identifier == f"channel:{server_name}:{channel}":
+                        # If we're viewing this channel, switch to server view
+                        if self.current_server == server_name and self.current_target == channel:
+                            selection = self.tree_view.get_selection()
+                            selection.select_iter(iter)
+                        self.tree_store.remove(child_iter)
+                        return
+                    child_iter = self.tree_store.iter_next(child_iter)
+                return
+            iter = self.tree_store.iter_next(iter)
+
     def remove_server_from_tree(self, server_name: str) -> None:
         """
         Remove server from tree view
@@ -1584,6 +1611,7 @@ class AccessibleIRCWindow(Gtk.Window):
         dialog = Gtk.Dialog(title="Join Channel", parent=self, modal=True)
         dialog.add_buttons(Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
                           Gtk.STOCK_OK, Gtk.ResponseType.OK)
+        dialog.set_default_response(Gtk.ResponseType.OK)
 
         box = dialog.get_content_area()
         box.set_spacing(6)
@@ -1592,6 +1620,7 @@ class AccessibleIRCWindow(Gtk.Window):
         label = Gtk.Label.new_with_mnemonic("_Channel name:")
         entry = Gtk.Entry()
         entry.set_placeholder_text("#channel")
+        entry.set_activates_default(True)
         label.set_mnemonic_widget(entry)
 
         box.pack_start(label, False, False, 0)

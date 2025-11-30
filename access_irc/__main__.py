@@ -272,8 +272,15 @@ class AccessIRCApplication:
 
         self.window.add_system_message(server, channel, message)
 
+        # Get the actual nickname for this server connection
+        connection = self.irc.connections.get(server)
+        our_nick = connection.nickname if connection else self.config.get_nickname()
+
+        # If we left, remove channel from tree
+        if nick == our_nick:
+            self.window.remove_channel_from_tree(server, channel)
         # Update users list if we're viewing this channel
-        if self.window.current_server == server and self.window.current_target == channel:
+        elif self.window.current_server == server and self.window.current_target == channel:
             self.window.update_users_list()
 
         # Log part if enabled for this server
@@ -386,8 +393,15 @@ class AccessIRCApplication:
         if self._should_log_server(server):
             self.log.log_kick(server, channel, kicker, kicked, reason)
 
+        # Get the actual nickname for this server connection
+        connection = self.irc.connections.get(server)
+        our_nick = connection.nickname if connection else self.config.get_nickname()
+
+        # If we were kicked, remove channel from tree
+        if kicked == our_nick:
+            self.window.remove_channel_from_tree(server, channel)
         # Update users list if we're viewing this channel
-        if self.window.current_server == server and self.window.current_target == channel:
+        elif self.window.current_server == server and self.window.current_target == channel:
             self.window.update_users_list()
 
     def on_irc_server_message(self, server: str, message: str) -> None:
