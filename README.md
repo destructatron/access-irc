@@ -135,7 +135,8 @@ Configuration is stored in `config.json` in your current directory (auto-created
   "ui": {
     "announce_all_messages": false,
     "announce_mentions_only": true,
-    "announce_joins_parts": false
+    "announce_joins_parts": false,
+    "scrollback_limit": 1000
   },
   "logging": {
     "log_directory": ""
@@ -170,6 +171,17 @@ Each log file contains timestamped messages:
 ```
 
 Logs are automatically rotated daily (new file each day) and organized by server and channel.
+
+### Message Scrollback
+
+Access IRC limits the number of messages kept in memory for each channel and private conversation to prevent excessive memory usage:
+
+- **Default limit**: 1000 messages per channel/PM
+- **Configurable**: Go to Settings → Preferences → Chat tab to adjust
+- **Range**: 0 (unlimited) to 10,000 messages
+- **Behavior**: When the limit is reached, oldest messages are removed from the buffer
+
+Note that this only affects in-memory display. If logging is enabled, all messages are still saved to disk regardless of the scrollback limit.
 
 ### Keyboard Navigation
 
