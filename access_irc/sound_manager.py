@@ -34,6 +34,7 @@ class SoundManager:
         self.sounds: Dict[str, Optional[str]] = {}  # Store file URIs
         self.players: Dict[str, Optional[Gst.Element]] = {}  # Store playbin elements
         self.initialized = False
+        self.load_failures = []  # Track sound loading failures
 
         if GST_AVAILABLE and self.config.are_sounds_enabled():
             self._initialize_gstreamer()
@@ -44,7 +45,6 @@ class SoundManager:
         try:
             # GStreamer is already initialized via Gst.init(None) at module level
             self.initialized = True
-            print("Sound system initialized (GStreamer)")
         except Exception as e:
             print(f"Failed to initialize sound system: {e}")
             self.initialized = False
@@ -53,6 +53,9 @@ class SoundManager:
         """Load all configured sound files"""
         if not self.initialized:
             return
+
+        # Clear previous failures
+        self.load_failures = []
 
         sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit"]
 
@@ -87,20 +90,20 @@ class SoundManager:
 
                         self.sounds[sound_type] = uri
                         self.players[sound_type] = player
-                        print(f"Loaded {sound_type} sound: {sound_path}")
+                        # Success - no print
                     else:
-                        print(f"Failed to create player for {sound_type}")
+                        self.load_failures.append(f"{sound_type}: Failed to create player")
                         self.sounds[sound_type] = None
                         self.players[sound_type] = None
                 except Exception as e:
-                    print(f"Failed to load {sound_type} sound from {sound_path}: {e}")
+                    self.load_failures.append(f"{sound_type}: {str(e)}")
                     self.sounds[sound_type] = None
                     self.players[sound_type] = None
             else:
                 self.sounds[sound_type] = None
                 self.players[sound_type] = None
                 if sound_path:
-                    print(f"Sound file not found: {sound_path}")
+                    self.load_failures.append(f"{sound_type}: File not found - {sound_path}")
 
     def play(self, sound_type: str) -> None:
         """

@@ -29,6 +29,9 @@ class AccessIRCApplication:
         self.sound = SoundManager(self.config)
         self.log = LogManager(self.config.get_log_directory())
 
+        # Store sound loading failures to show after window is created
+        self.sound_load_failures = self.sound.load_failures.copy() if self.sound.load_failures else []
+
         # Create IRC callbacks
         callbacks = {
             "on_connect": self.on_irc_connect,
@@ -65,6 +68,10 @@ class AccessIRCApplication:
         self.window.show_all()
         self.window.update_status("Ready")
 
+        # Show sound loading errors if any
+        if self.sound_load_failures:
+            GLib.idle_add(self._show_sound_load_errors)
+
         # Auto-connect to servers after main loop starts (using idle_add to avoid race conditions)
         GLib.idle_add(self._auto_connect_servers)
 
@@ -97,6 +104,38 @@ class AccessIRCApplication:
                     print(error_msg)
 
         return False  # Don't repeat this callback
+
+    def _show_sound_load_errors(self) -> bool:
+        """
+        Show error dialog for sound loading failures
+
+        Returns:
+            False (for GLib.idle_add)
+        """
+        if not self.sound_load_failures:
+            return False
+
+        from gi.repository import Gtk
+
+        # Create error dialog
+        dialog = Gtk.MessageDialog(
+            transient_for=self.window,
+            modal=True,
+            message_type=Gtk.MessageType.WARNING,
+            buttons=Gtk.ButtonsType.OK,
+            text="Sound Loading Errors"
+        )
+
+        # Build detailed message
+        failure_text = "The following sounds failed to load:\n\n"
+        for failure in self.sound_load_failures:
+            failure_text += f"• {failure}\n"
+
+        dialog.format_secondary_text(failure_text.strip())
+        dialog.run()
+        dialog.destroy()
+
+        return False
 
     def _should_log_server(self, server_name: str) -> bool:
         """

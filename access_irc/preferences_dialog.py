@@ -408,6 +408,25 @@ class PreferencesDialog(Gtk.Dialog):
         if self.sound_manager:
             self.sound_manager.reload_sounds()
 
+            # Show error dialog if any sounds failed to load
+            if self.sound_manager.load_failures:
+                error_dialog = Gtk.MessageDialog(
+                    transient_for=self,
+                    modal=True,
+                    message_type=Gtk.MessageType.WARNING,
+                    buttons=Gtk.ButtonsType.OK,
+                    text="Sound Loading Errors"
+                )
+
+                # Build detailed message
+                failure_text = "The following sounds failed to load:\n\n"
+                for failure in self.sound_manager.load_failures:
+                    failure_text += f"• {failure}\n"
+
+                error_dialog.format_secondary_text(failure_text.strip())
+                error_dialog.run()
+                error_dialog.destroy()
+
     def on_browse_sound(self, widget, entry: Gtk.Entry) -> None:
         """Browse for sound file"""
 
