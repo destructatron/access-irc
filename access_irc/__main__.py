@@ -258,11 +258,11 @@ class AccessIRCApplication:
         if self._should_log_server(server):
             self.log.log_join(server, channel, nick)
 
-        # Play join sound and announce if configured
+        # Play join sound and announce if "all messages" mode is active
         if self.sound:
             self.sound.play_join()
 
-        if self.config.should_announce_joins_parts():
+        if self.window.should_announce_all_messages():
             self.window.announce_to_screen_reader(message)
 
     def on_irc_part(self, server: str, channel: str, nick: str, reason: str) -> None:
@@ -288,11 +288,11 @@ class AccessIRCApplication:
         if self._should_log_server(server):
             self.log.log_part(server, channel, nick, reason)
 
-        # Play part sound and announce if configured
+        # Play part sound and announce if "all messages" mode is active
         if self.sound:
             self.sound.play_part()
 
-        if self.config.should_announce_joins_parts():
+        if self.window.should_announce_all_messages():
             self.window.announce_to_screen_reader(message)
 
     def on_irc_quit(self, server: str, nick: str, reason: str, channels: list) -> None:
@@ -317,8 +317,8 @@ class AccessIRCApplication:
         if self.sound:
             self.sound.play_quit()
 
-        # Announce if configured
-        if self.config.should_announce_joins_parts():
+        # Announce if "all messages" mode is active
+        if self.window.should_announce_all_messages():
             self.window.announce_to_screen_reader(message)
 
     def on_irc_nick(self, server: str, old_nick: str, new_nick: str) -> None:
@@ -356,8 +356,8 @@ class AccessIRCApplication:
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
 
-        # Announce if configured (for other users' nick changes)
-        if not is_own_nick and self.config.should_announce_joins_parts():
+        # Announce if "all messages" mode is active (for other users' nick changes)
+        if not is_own_nick and self.window.should_announce_all_messages():
             self.window.announce_to_screen_reader(message)
 
     def on_irc_names(self, server: str, channel: str, users: list) -> None:
