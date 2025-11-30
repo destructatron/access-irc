@@ -33,7 +33,8 @@ class ConfigManager:
             "show_timestamps": True,
             "announce_all_messages": False,
             "announce_mentions_only": True,
-            "announce_joins_parts": False
+            "announce_joins_parts": False,
+            "scrollback_limit": 1000
         },
         "logging": {
             "log_directory": ""
@@ -309,6 +310,22 @@ class ConfigManager:
         if "logging" not in self.config:
             self.config["logging"] = {}
         self.config["logging"]["log_directory"] = log_directory
+        self.save_config()
+
+    def get_scrollback_limit(self) -> int:
+        """Get scrollback limit (number of messages to keep in history)"""
+        return self.config.get("ui", {}).get("scrollback_limit", 1000)
+
+    def set_scrollback_limit(self, limit: int) -> None:
+        """
+        Set scrollback limit and save
+
+        Args:
+            limit: Number of messages to keep in scrollback (0 = unlimited)
+        """
+        if "ui" not in self.config:
+            self.config["ui"] = {}
+        self.config["ui"]["scrollback_limit"] = limit
         self.save_config()
 
 

@@ -68,10 +68,6 @@ class AccessibleIRCWindow(Gtk.Window):
         # Values: "all", "mentions", "none"
         self.temp_announcement_mode = None
 
-        # Announcement queue to prevent overwhelming AT-SPI2 with rapid announcements
-        self.announcement_queue = []
-        self.announcement_timer_id = None
-
         # Build UI
         self._build_ui()
 
@@ -423,46 +419,7 @@ class AccessibleIRCWindow(Gtk.Window):
 
     def announce_to_screen_reader(self, message: str) -> None:
         """
-        Queue announcement to screen reader via AT-SPI2
-        Uses a queue with delays to prevent overwhelming AT-SPI2/Orca
-
-        Args:
-            message: Message to announce
-        """
-        # Add to queue
-        self.announcement_queue.append(message)
-
-        # If timer isn't running, start processing queue
-        if self.announcement_timer_id is None:
-            self._process_announcement_queue()
-
-    def _process_announcement_queue(self) -> bool:
-        """
-        Process next announcement in queue
-        Returns False to stop timer if queue is empty
-        """
-        if not self.announcement_queue:
-            self.announcement_timer_id = None
-            return False  # Stop timer
-
-        # Get next announcement
-        message = self.announcement_queue.pop(0)
-
-        # Send it via AT-SPI2
-        self._emit_announcement(message)
-
-        # Schedule next announcement if queue not empty
-        if self.announcement_queue:
-            # Wait 100ms before next announcement to avoid overwhelming AT-SPI2
-            self.announcement_timer_id = GLib.timeout_add(100, self._process_announcement_queue)
-            return False  # Current timer done, new one scheduled
-        else:
-            self.announcement_timer_id = None
-            return False  # Queue empty, stop timer
-
-    def _emit_announcement(self, message: str) -> None:
-        """
-        Actually emit the AT-SPI2 announcement
+        Send announcement to screen reader via AT-SPI2
 
         Args:
             message: Message to announce
@@ -475,15 +432,18 @@ class AccessibleIRCWindow(Gtk.Window):
                 print("Warning: No accessible object available for announcement")
                 return
 
-            # Try announcement signal first (this is what works for normal messages)
-            try:
-                atk_object.emit("announcement", message)
-            except Exception as e:
-                # Fallback to notification signal
-                print(f"Warning: Failed to emit 'announcement' signal: {e}")
-                atk_object.emit("notification", message)
+            # Emit announcement signal for screen readers
+            # This signal will be picked up by Orca and read aloud
+            atk_object.emit("announcement", message)
         except Exception as e:
-            print(f"Error: Failed to emit accessibility announcement: {e}")
+            # Fallback to notification signal
+            print(f"Warning: Failed to emit 'announcement' signal: {e}")
+            try:
+                atk_object = self.get_accessible()
+                if atk_object:
+                    atk_object.emit("notification", message)
+            except Exception as e2:
+                print(f"Error: Failed to emit accessibility announcement: {e2}")
 
     def toggle_announcement_mode(self) -> None:
         """
@@ -537,6 +497,36 @@ class AccessibleIRCWindow(Gtk.Window):
 
         return False
 
+    def _trim_buffer(self, buffer: Gtk.TextBuffer) -> None:
+        """
+        Trim buffer to scrollback limit if necessary
+
+        Args:
+            buffer: TextBuffer to trim
+        """
+        if not self.config_manager:
+            return
+
+        limit = self.config_manager.get_scrollback_limit()
+        if limit == 0:  # 0 = unlimited
+            return
+
+        # Get line count
+        line_count = buffer.get_line_count()
+
+        # If we're over the limit, delete oldest lines
+        if line_count > limit:
+            lines_to_delete = line_count - limit
+
+            # Get iterator at start of buffer
+            start_iter = buffer.get_start_iter()
+
+            # Move iterator to end of lines to delete
+            end_iter = buffer.get_iter_at_line(lines_to_delete)
+
+            # Delete the lines
+            buffer.delete(start_iter, end_iter)
+
     def add_message(self, server: str, target: str, sender: str, message: str,
                    is_mention: bool = False, is_system: bool = False) -> None:
         """
@@ -573,6 +563,9 @@ class AccessibleIRCWindow(Gtk.Window):
         # Add to buffer at the end (not at cursor position)
         end_iter = buffer.get_end_iter()
         buffer.insert(end_iter, formatted)
+
+        # Trim buffer if it exceeds scrollback limit
+        self._trim_buffer(buffer)
 
         # If this is the current view, update display and scroll
         if self.current_server == server and self.current_target == target:
@@ -647,6 +640,9 @@ class AccessibleIRCWindow(Gtk.Window):
         end_iter = buffer.get_end_iter()
         buffer.insert(end_iter, formatted)
 
+        # Trim buffer if it exceeds scrollback limit
+        self._trim_buffer(buffer)
+
         # If this is the current view, update display and scroll
         if self.current_server == server and self.current_target == target:
             self.message_view.set_buffer(buffer)
@@ -673,6 +669,9 @@ class AccessibleIRCWindow(Gtk.Window):
 
                     end_iter = mentions_buffer.get_end_iter()
                     mentions_buffer.insert(end_iter, mentions_formatted)
+
+                    # Trim buffer if it exceeds scrollback limit
+                    self._trim_buffer(mentions_buffer)
 
                     # Update view if mentions buffer is visible
                     if self.current_server == server and self.current_target == "mentions":
@@ -716,6 +715,9 @@ class AccessibleIRCWindow(Gtk.Window):
         # Add to buffer at the end
         end_iter = buffer.get_end_iter()
         buffer.insert(end_iter, formatted)
+
+        # Trim buffer if it exceeds scrollback limit
+        self._trim_buffer(buffer)
 
         # If this is the current view, update display and scroll
         if self.current_server == server and self.current_target == target:
@@ -762,6 +764,9 @@ class AccessibleIRCWindow(Gtk.Window):
         # Add to buffer at the end
         end_iter = buffer.get_end_iter()
         buffer.insert(end_iter, formatted)
+
+        # Trim buffer if it exceeds scrollback limit
+        self._trim_buffer(buffer)
 
         # If this is the current view, update display and scroll
         if self.current_server == server and self.current_target == "mentions":

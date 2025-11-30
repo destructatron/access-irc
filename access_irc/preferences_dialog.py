@@ -130,6 +130,28 @@ class PreferencesDialog(Gtk.Dialog):
         )
         box.pack_start(self.show_timestamps, False, False, 0)
 
+        # Scrollback limit
+        scrollback_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        scrollback_label = Gtk.Label.new_with_mnemonic("_Scrollback limit:")
+        scrollback_label.set_halign(Gtk.Align.START)
+        scrollback_hbox.pack_start(scrollback_label, False, False, 0)
+
+        # SpinButton for scrollback limit (0 to 10000, step 100)
+        adjustment = Gtk.Adjustment(value=1000, lower=0, upper=10000, step_increment=100, page_increment=500)
+        self.scrollback_spin = Gtk.SpinButton()
+        self.scrollback_spin.set_adjustment(adjustment)
+        self.scrollback_spin.set_digits(0)
+        self.scrollback_spin.set_tooltip_text("Number of messages to keep in history (0 = unlimited)")
+        scrollback_label.set_mnemonic_widget(self.scrollback_spin)
+        scrollback_hbox.pack_start(self.scrollback_spin, False, False, 0)
+
+        scrollback_info = Gtk.Label(label="messages (0 = unlimited)")
+        scrollback_info.set_halign(Gtk.Align.START)
+        scrollback_hbox.pack_start(scrollback_info, False, False, 0)
+
+        box.pack_start(scrollback_hbox, False, False, 0)
+
         box.pack_start(Gtk.Separator(), False, False, 6)
 
         # Logging preferences
@@ -303,6 +325,7 @@ class PreferencesDialog(Gtk.Dialog):
 
         # Display settings
         self.show_timestamps.set_active(self.config.should_show_timestamps())
+        self.scrollback_spin.set_value(self.config.get_scrollback_limit())
 
         # Logging settings
         self.log_directory_entry.set_text(self.config.get_log_directory())
@@ -333,6 +356,7 @@ class PreferencesDialog(Gtk.Dialog):
 
         self.config.set("ui", {
             "show_timestamps": self.show_timestamps.get_active(),
+            "scrollback_limit": int(self.scrollback_spin.get_value()),
             "announce_all_messages": announce_all,
             "announce_mentions_only": announce_mentions,
             "announce_joins_parts": self.announce_joins_parts.get_active()
