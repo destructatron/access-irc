@@ -18,7 +18,8 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 ### IRC Functionality
 - Multi-server support with autoconnect option
 - Channel and private message management
-- Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/quit`, `/raw`
+- Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/list`, `/quit`, `/raw`
+- **Channel list browser**: Search and browse available channels with pagination
 - User lists with mode prefixes (@, +, %, ~, &)
 - Tab completion for usernames in channels (press Tab to cycle through matches)
 - CTCP ACTION and NOTICE support
@@ -211,8 +212,32 @@ Note that this only affects in-memory display. If logging is enabled, all messag
 - `/away [message]` - Set away status
 - `/invite <nick> [channel]` - Invite user to channel
 - `/me <action>` - Send CTCP ACTION
+- `/list` - Open channel list browser (see below)
 - `/raw <command>` - Send raw IRC command
 - `/quit [message]` - Disconnect and quit
+
+### Channel List
+
+The `/list` command opens a dialog to browse and join channels on the current server:
+
+**Features:**
+- **Filter/Search**: Type to filter channels by name or topic
+- **Pagination**: Browse channels 100 at a time with Previous/Next buttons
+- **Sorted by popularity**: Channels are sorted by user count (most popular first)
+- **Screen reader announcements**: Previous/Next buttons announce the current range (e.g., "Showing channels 101 to 200 of 4175")
+
+**Usage:**
+1. Type `/list` in the message input while connected to a server
+2. Wait for the server to send the channel list (a message will confirm when it's ready)
+3. Use the Filter field to search for channels by name or topic
+4. Navigate with Previous (Alt+P) and Next (Alt+N) buttons
+5. Press Enter on a channel to join it
+
+**Accessibility:**
+- Filter field has mnemonic Alt+F
+- Pagination buttons announce the visible range to screen readers
+- Channels display in a table with Channel, Users, and Topic columns
+- Status shows current range (e.g., "Showing 1-100 of 500 channels")
 
 ## Technology
 
