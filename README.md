@@ -194,6 +194,7 @@ Note that this only affects in-memory display. If logging is enabled, all messag
 - `Alt+M` - Focus message input
 - `Alt+U` - Focus users list (in channels)
 - `Ctrl+W` - Close current PM or leave channel
+- `Ctrl+S` - Cycle announcement mode (all messages → mentions only → none)
 - Arrow keys - Navigate message history or tree view
 - `Enter` - Send message (in input field)
 - `Shift+Enter` - Insert new line in message input (allows multi-line messages)
