@@ -1546,6 +1546,18 @@ class AccessibleIRCWindow(Gtk.Window):
                     self.add_system_message(self.current_server, self.current_target,
                                            f"Sent raw command: {args}")
 
+        elif cmd == "/list":
+            # /list - Request and display channel list
+            if self.irc_manager:
+                connection = self.irc_manager.connections.get(self.current_server)
+                if connection:
+                    if connection.request_channel_list():
+                        self.add_system_message(self.current_server, self.current_target,
+                                               "Requesting channel list from server...")
+                    else:
+                        self.add_system_message(self.current_server, self.current_target,
+                                               "Channel list request already in progress")
+
         elif cmd == "/quit":
             self.on_quit(None)
 
@@ -1842,6 +1854,18 @@ class AccessibleIRCWindow(Gtk.Window):
 
         Gtk.main_quit()
 
+    def show_channel_list_dialog(self, server: str, channels: list) -> None:
+        """
+        Show channel list dialog
+
+        Args:
+            server: Server name
+            channels: List of channel dicts with 'channel', 'users', 'topic' keys
+        """
+        dialog = ChannelListDialog(self, server, channels, self.irc_manager)
+        dialog.run()
+        dialog.destroy()
+
     # Helper dialogs
     def show_error_dialog(self, title: str, message: str) -> None:
         """Show error dialog"""
@@ -1868,6 +1892,226 @@ class AccessibleIRCWindow(Gtk.Window):
         dialog.format_secondary_text(message)
         dialog.run()
         dialog.destroy()
+
+
+class ChannelListDialog(Gtk.Dialog):
+    """Dialog to display and filter channel list from IRC server"""
+
+    # Maximum number of channels to display per page
+    PAGE_SIZE = 100
+
+    def __init__(self, parent, server: str, channels: list, irc_manager):
+        """
+        Initialize channel list dialog
+
+        Args:
+            parent: Parent window
+            server: Server name
+            channels: List of channel dicts with 'channel', 'users', 'topic' keys
+            irc_manager: IRCManager instance for joining channels
+        """
+        super().__init__(title=f"Channel List - {server}", parent=parent, modal=True)
+        self.set_default_size(700, 500)
+        self.set_border_width(12)
+
+        self.server = server
+        self.all_channels = channels
+        self.irc_manager = irc_manager
+        self.filtered_channels = []
+        self.current_page = 0
+
+        self.add_buttons(Gtk.STOCK_CLOSE, Gtk.ResponseType.CLOSE)
+
+        content = self.get_content_area()
+        content.set_spacing(12)
+
+        # Search box
+        search_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+        search_label = Gtk.Label.new_with_mnemonic("_Filter:")
+        self.search_entry = Gtk.Entry()
+        self.search_entry.set_placeholder_text("Type to filter channels...")
+        self.search_entry.connect("changed", self.on_search_changed)
+        search_label.set_mnemonic_widget(self.search_entry)
+        search_box.pack_start(search_label, False, False, 0)
+        search_box.pack_start(self.search_entry, True, True, 0)
+        content.pack_start(search_box, False, False, 0)
+
+        # Status label
+        self.status_label = Gtk.Label()
+        self.status_label.set_xalign(0)
+        content.pack_start(self.status_label, False, False, 0)
+
+        # Create list store: channel name, user count, topic
+        self.list_store = Gtk.ListStore(str, int, str)
+
+        # Create tree view
+        self.tree_view = Gtk.TreeView(model=self.list_store)
+        self.tree_view.set_headers_visible(True)
+        self.tree_view.connect("row-activated", self.on_row_activated)
+        self.tree_view.connect("key-press-event", self.on_key_press)
+
+        # Channel column
+        channel_renderer = Gtk.CellRendererText()
+        channel_column = Gtk.TreeViewColumn("Channel", channel_renderer, text=0)
+        channel_column.set_sort_column_id(0)
+        channel_column.set_resizable(True)
+        channel_column.set_min_width(150)
+        self.tree_view.append_column(channel_column)
+
+        # Users column
+        users_renderer = Gtk.CellRendererText()
+        users_column = Gtk.TreeViewColumn("Users", users_renderer, text=1)
+        users_column.set_sort_column_id(1)
+        users_column.set_resizable(True)
+        users_column.set_min_width(60)
+        self.tree_view.append_column(users_column)
+
+        # Topic column
+        topic_renderer = Gtk.CellRendererText()
+        topic_renderer.set_property("ellipsize", 3)  # PANGO_ELLIPSIZE_END
+        topic_column = Gtk.TreeViewColumn("Topic", topic_renderer, text=2)
+        topic_column.set_sort_column_id(2)
+        topic_column.set_resizable(True)
+        topic_column.set_expand(True)
+        self.tree_view.append_column(topic_column)
+
+        # Scrolled window for tree
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        scrolled.add(self.tree_view)
+        content.pack_start(scrolled, True, True, 0)
+
+        # Pagination box
+        pagination_box = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        self.prev_button = Gtk.Button.new_with_mnemonic("_Previous")
+        self.prev_button.connect("clicked", self.on_prev_clicked)
+        pagination_box.pack_start(self.prev_button, False, False, 0)
+
+        self.page_label = Gtk.Label()
+        pagination_box.pack_start(self.page_label, True, True, 0)
+
+        self.next_button = Gtk.Button.new_with_mnemonic("_Next")
+        self.next_button.connect("clicked", self.on_next_clicked)
+        pagination_box.pack_start(self.next_button, False, False, 0)
+
+        content.pack_start(pagination_box, False, False, 0)
+
+        # Help text
+        help_label = Gtk.Label()
+        help_label.set_markup("<i>Press Enter to join the selected channel</i>")
+        help_label.set_xalign(0)
+        content.pack_start(help_label, False, False, 0)
+
+        # Initial population
+        self.apply_filter("")
+
+        self.show_all()
+
+        # Focus search entry
+        self.search_entry.grab_focus()
+
+    def apply_filter(self, filter_text: str) -> None:
+        """
+        Apply filter and reset to first page
+
+        Args:
+            filter_text: Text to filter channels by
+        """
+        filter_lower = filter_text.lower()
+
+        # Filter channels
+        if filter_lower:
+            self.filtered_channels = [
+                ch for ch in self.all_channels
+                if filter_lower in ch["channel"].lower() or filter_lower in ch["topic"].lower()
+            ]
+        else:
+            self.filtered_channels = list(self.all_channels)
+
+        # Sort by user count descending (most popular first)
+        self.filtered_channels.sort(key=lambda x: x["users"], reverse=True)
+
+        # Reset to first page
+        self.current_page = 0
+        self.update_page()
+
+    def update_page(self) -> None:
+        """Update the displayed page"""
+        self.list_store.clear()
+
+        total_filtered = len(self.filtered_channels)
+        total_pages = max(1, (total_filtered + self.PAGE_SIZE - 1) // self.PAGE_SIZE)
+
+        # Calculate slice for current page
+        start_idx = self.current_page * self.PAGE_SIZE
+        end_idx = start_idx + self.PAGE_SIZE
+        page_channels = self.filtered_channels[start_idx:end_idx]
+
+        for ch in page_channels:
+            self.list_store.append([ch["channel"], ch["users"], ch["topic"]])
+
+        # Update pagination buttons
+        self.prev_button.set_sensitive(self.current_page > 0)
+        self.next_button.set_sensitive(end_idx < total_filtered)
+
+        # Update page label
+        if total_filtered > 0:
+            self.page_label.set_text(f"Page {self.current_page + 1} of {total_pages}")
+        else:
+            self.page_label.set_text("No channels")
+
+        # Update status label
+        total = len(self.all_channels)
+        displayed = len(page_channels)
+        filter_text = self.search_entry.get_text()
+
+        if filter_text:
+            self.status_label.set_text(
+                f"Showing {start_idx + 1}-{start_idx + displayed} of {total_filtered} matching channels ({total} total)"
+            )
+        else:
+            self.status_label.set_text(
+                f"Showing {start_idx + 1}-{start_idx + displayed} of {total} channels (sorted by user count)"
+            )
+
+    def on_search_changed(self, entry) -> None:
+        """Handle search entry text change"""
+        self.apply_filter(entry.get_text())
+
+    def on_prev_clicked(self, button) -> None:
+        """Handle Previous button click"""
+        if self.current_page > 0:
+            self.current_page -= 1
+            self.update_page()
+
+    def on_next_clicked(self, button) -> None:
+        """Handle Next button click"""
+        total_filtered = len(self.filtered_channels)
+        if (self.current_page + 1) * self.PAGE_SIZE < total_filtered:
+            self.current_page += 1
+            self.update_page()
+
+    def on_row_activated(self, tree_view, path, column) -> None:
+        """Handle double-click or Enter on a row"""
+        self.join_selected_channel()
+
+    def on_key_press(self, widget, event) -> bool:
+        """Handle key press in tree view"""
+        if event.keyval == Gdk.KEY_Return or event.keyval == Gdk.KEY_KP_Enter:
+            self.join_selected_channel()
+            return True
+        return False
+
+    def join_selected_channel(self) -> None:
+        """Join the currently selected channel"""
+        selection = self.tree_view.get_selection()
+        model, tree_iter = selection.get_selected()
+        if tree_iter:
+            channel = model.get_value(tree_iter, 0)
+            if self.irc_manager:
+                self.irc_manager.join_channel(self.server, channel)
+            self.response(Gtk.ResponseType.CLOSE)
 
 
 class ConnectServerDialog(Gtk.Dialog):

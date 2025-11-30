@@ -84,6 +84,10 @@ class IRCConnection:
         # Track users in each channel: Dict[channel, Set[nickname]]
         self.channel_users: Dict[str, set] = {}
 
+        # Channel list storage for /list command
+        self.channel_list: List[Dict[str, Any]] = []
+        self.channel_list_in_progress = False
+
     def _call_callback(self, callback_name: str, *args) -> bool:
         """
         Helper to call a callback and ensure it returns False for GLib.idle_add
@@ -522,6 +526,35 @@ class IRCConnection:
                     message
                 )
 
+        def on_list_entry(irc, hostmask, args):
+            """Handle channel list entry (322 RPL_LIST)"""
+            # args format: [our_nick, channel, user_count, :topic]
+            if len(args) >= 3:
+                channel = args[1]
+                try:
+                    user_count = int(args[2])
+                except ValueError:
+                    user_count = 0
+                topic = args[3] if len(args) > 3 else ""
+                # Strip IRC formatting from topic
+                topic = strip_irc_formatting(topic)
+
+                self.channel_list.append({
+                    "channel": channel,
+                    "users": user_count,
+                    "topic": topic
+                })
+
+        def on_list_end(irc, hostmask, args):
+            """Handle end of channel list (323 RPL_LISTEND)"""
+            self.channel_list_in_progress = False
+            GLib.idle_add(
+                self._call_callback,
+                "on_channel_list_ready",
+                self.server_name,
+                self.channel_list.copy()
+            )
+
         # Register handlers with IRC instance
         self.irc.Handler("001", colon=False)(on_connect)  # RPL_WELCOME
         self.irc.Handler("PRIVMSG", colon=False)(on_message)
@@ -543,6 +576,28 @@ class IRCConnection:
         self.irc.Handler("319", colon=False)(on_whois_channels)  # RPL_WHOISCHANNELS
         self.irc.Handler("330", colon=False)(on_whois_account)  # RPL_WHOISACCOUNT
         self.irc.Handler("671", colon=False)(on_whois_secure)  # RPL_WHOISSECURE
+
+        # Channel list handlers
+        self.irc.Handler("322", colon=False)(on_list_entry)  # RPL_LIST
+        self.irc.Handler("323", colon=False)(on_list_end)  # RPL_LISTEND
+
+    def request_channel_list(self) -> bool:
+        """
+        Request channel list from server
+
+        Returns:
+            True if request was sent, False if already in progress or not connected
+        """
+        if not self.irc or not self.connected:
+            return False
+
+        if self.channel_list_in_progress:
+            return False
+
+        self.channel_list = []
+        self.channel_list_in_progress = True
+        self.irc.quote("LIST")
+        return True
 
     def send_message(self, target: str, message: str) -> None:
         """

@@ -45,7 +45,8 @@ class AccessIRCApplication:
             "on_nick": self.on_irc_nick,
             "on_names": self.on_irc_names,
             "on_kick": self.on_irc_kick,
-            "on_server_message": self.on_irc_server_message
+            "on_server_message": self.on_irc_server_message,
+            "on_channel_list_ready": self.on_irc_channel_list_ready
         }
 
         self.irc = IRCManager(self.config, callbacks)
@@ -416,6 +417,16 @@ class AccessIRCApplication:
         target = self.window.current_target if self.window.current_server == server else server
         # Announce server messages to screen readers since they're important information
         self.window.add_system_message(server, target, message, announce=True)
+
+    def on_irc_channel_list_ready(self, server: str, channels: list) -> None:
+        """
+        Handle channel list ready event
+
+        Args:
+            server: Server name
+            channels: List of channel dicts with 'channel', 'users', 'topic' keys
+        """
+        self.window.show_channel_list_dialog(server, channels)
 
     def on_window_destroy(self, widget) -> None:
         """Handle window destruction"""
