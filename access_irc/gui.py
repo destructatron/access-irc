@@ -642,9 +642,12 @@ class AccessibleIRCWindow(Gtk.Window):
             if self.should_announce_all_messages():
                 self.announce_to_screen_reader(f"{sender} in {target}: {message}")
 
-            # Play message sound
+            # Play appropriate sound (PM sound for private messages, message sound for channels)
             if self.sound_manager:
-                self.sound_manager.play_message()
+                if not target.startswith("#"):
+                    self.sound_manager.play_privmsg()
+                else:
+                    self.sound_manager.play_message()
 
     def add_system_message(self, server: str, target: str, message: str, announce: bool = False) -> None:
         """
