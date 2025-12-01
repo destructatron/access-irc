@@ -54,6 +54,11 @@ def strip_irc_formatting(text: str) -> str:
 class IRCConnection:
     """Represents a single IRC server connection"""
 
+    # IRC protocol limit is 512 bytes per message including CRLF
+    # Reserve space for: hostmask prefix (~100), PRIVMSG command (8), target, colon-space (2), CRLF (2)
+    IRC_MAX_LINE = 512
+    IRC_HOSTMASK_BUFFER = 100  # Conservative estimate for :nick!user@host prefix
+
     def __init__(self, server_config: Dict[str, Any], callbacks: Dict[str, Callable]):
         """
         Initialize IRC connection
@@ -599,34 +604,149 @@ class IRCConnection:
         self.irc.quote("LIST")
         return True
 
-    def send_message(self, target: str, message: str) -> None:
+    def _calculate_max_message_length(self, target: str, extra_overhead: int = 0) -> int:
         """
-        Send message to channel or user
+        Calculate maximum message length for a given target.
+
+        IRC messages have a 512 byte limit including CRLF. When sending PRIVMSG,
+        the format is: PRIVMSG target :message\r\n
+        The server also prepends :nick!user@host when relaying.
+
+        Args:
+            target: Channel name or nick
+            extra_overhead: Additional bytes to reserve (e.g., for CTCP wrapper)
+
+        Returns:
+            Maximum safe message length in bytes
+        """
+        # Format: PRIVMSG target :message\r\n
+        # Overhead: "PRIVMSG " (8) + target + " :" (2) + "\r\n" (2) + hostmask buffer
+        overhead = 8 + len(target.encode('utf-8')) + 2 + 2 + self.IRC_HOSTMASK_BUFFER + extra_overhead
+        return self.IRC_MAX_LINE - overhead
+
+    def _split_message(self, message: str, max_length: int) -> List[str]:
+        """
+        Split a message into chunks that fit within the IRC limit.
+
+        Attempts to split on word boundaries when possible for readability.
+
+        Args:
+            message: Message to split
+            max_length: Maximum length per chunk in bytes
+
+        Returns:
+            List of message chunks
+        """
+        if len(message.encode('utf-8')) <= max_length:
+            return [message]
+
+        chunks = []
+        remaining = message
+
+        while remaining:
+            # Encode to check byte length
+            remaining_bytes = remaining.encode('utf-8')
+
+            if len(remaining_bytes) <= max_length:
+                chunks.append(remaining)
+                break
+
+            # Find a good split point
+            # Start at max_length and work backwards to find a space
+            split_point = max_length
+
+            # Decode back to find character boundary
+            # This handles multi-byte UTF-8 characters properly
+            chunk_bytes = remaining_bytes[:split_point]
+            # Decode, potentially truncating a multi-byte character
+            try:
+                chunk = chunk_bytes.decode('utf-8')
+            except UnicodeDecodeError:
+                # We cut in the middle of a multi-byte character, back up
+                while split_point > 0:
+                    split_point -= 1
+                    try:
+                        chunk = remaining_bytes[:split_point].decode('utf-8')
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                else:
+                    # Couldn't decode anything, shouldn't happen
+                    chunk = remaining[:max_length // 4]  # Conservative fallback
+
+            # Try to split on a word boundary (space)
+            last_space = chunk.rfind(' ')
+            if last_space > max_length // 2:  # Only if space is in second half
+                chunk = chunk[:last_space]
+
+            chunks.append(chunk)
+            remaining = remaining[len(chunk):].lstrip()  # Remove leading spaces from next chunk
+
+        return chunks
+
+    def send_message(self, target: str, message: str) -> List[str]:
+        """
+        Send message to channel or user, splitting if necessary.
+
+        IRC has a 512 byte limit per message. This method automatically
+        splits long messages into multiple chunks.
 
         Args:
             target: Channel name or nick
             message: Message to send
+
+        Returns:
+            List of message chunks that were sent
         """
-        if self.irc and self.connected:
+        if not self.irc or not self.connected:
+            return []
+
+        max_length = self._calculate_max_message_length(target)
+        chunks = self._split_message(message, max_length)
+
+        sent_chunks = []
+        for chunk in chunks:
             try:
-                self.irc.msg(target, message)
+                self.irc.msg(target, chunk)
+                sent_chunks.append(chunk)
             except Exception as e:
                 print(f"Failed to send message to {target}: {e}")
+                break
 
-    def send_action(self, target: str, action: str) -> None:
+        return sent_chunks
+
+    def send_action(self, target: str, action: str) -> List[str]:
         """
-        Send CTCP ACTION message (/me)
+        Send CTCP ACTION message (/me), splitting if necessary.
+
+        IRC has a 512 byte limit per message. This method automatically
+        splits long actions into multiple chunks.
 
         Args:
             target: Channel name or nick
             action: Action text
+
+        Returns:
+            List of action chunks that were sent
         """
-        if self.irc and self.connected:
+        if not self.irc or not self.connected:
+            return []
+
+        # CTCP ACTION format: \x01ACTION text\x01 adds 9 bytes overhead
+        ctcp_overhead = 9  # \x01ACTION \x01
+        max_length = self._calculate_max_message_length(target, ctcp_overhead)
+        chunks = self._split_message(action, max_length)
+
+        sent_chunks = []
+        for chunk in chunks:
             try:
-                # CTCP ACTION format: \x01ACTION text\x01
-                self.irc.msg(target, f"\x01ACTION {action}\x01")
+                self.irc.msg(target, f"\x01ACTION {chunk}\x01")
+                sent_chunks.append(chunk)
             except Exception as e:
                 print(f"Failed to send action to {target}: {e}")
+                break
+
+        return sent_chunks
 
     def join_channel(self, channel: str) -> None:
         """
@@ -820,35 +940,49 @@ class IRCManager:
         for server_name in list(self.connections.keys()):
             self.disconnect_server(server_name, reason)
 
-    def send_message(self, server_name: str, target: str, message: str) -> None:
+    def send_message(self, server_name: str, target: str, message: str) -> List[str]:
         """
-        Send message to channel or user
+        Send message to channel or user, splitting if necessary.
+
+        IRC has a 512 byte limit per message. This method automatically
+        splits long messages into multiple chunks.
 
         Args:
             server_name: Name of server
             target: Channel name or nick
             message: Message to send
+
+        Returns:
+            List of message chunks that were sent
         """
         connection = self.connections.get(server_name)
         if connection:
-            connection.send_message(target, message)
+            return connection.send_message(target, message)
         else:
             print(f"Not connected to {server_name}")
+            return []
 
-    def send_action(self, server_name: str, target: str, action: str) -> None:
+    def send_action(self, server_name: str, target: str, action: str) -> List[str]:
         """
-        Send CTCP ACTION message (/me)
+        Send CTCP ACTION message (/me), splitting if necessary.
+
+        IRC has a 512 byte limit per message. This method automatically
+        splits long actions into multiple chunks.
 
         Args:
             server_name: Name of server
             target: Channel name or nick
             action: Action text
+
+        Returns:
+            List of action chunks that were sent
         """
         connection = self.connections.get(server_name)
         if connection:
-            connection.send_action(target, action)
+            return connection.send_action(target, action)
         else:
             print(f"Not connected to {server_name}")
+            return []
 
     def join_channel(self, server_name: str, channel: str) -> None:
         """

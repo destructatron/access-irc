@@ -1358,11 +1358,13 @@ class AccessibleIRCWindow(Gtk.Window):
             if message.startswith("/"):
                 self._handle_command(message)
             else:
-                self.irc_manager.send_message(self.current_server, self.current_target, message)
+                # Send message (may be split into chunks if too long)
+                sent_chunks = self.irc_manager.send_message(self.current_server, self.current_target, message)
 
-                # Add own message to display
+                # Add each sent chunk to display
                 nickname = self.config_manager.get_nickname() if self.config_manager else "You"
-                self.add_message(self.current_server, self.current_target, nickname, message)
+                for chunk in sent_chunks:
+                    self.add_message(self.current_server, self.current_target, nickname, chunk)
 
         # Clear TextView buffer
         buffer.set_text("")
@@ -1388,13 +1390,14 @@ class AccessibleIRCWindow(Gtk.Window):
                     self.irc_manager.part_channel(self.current_server, self.current_target, args)
 
         elif cmd == "/me" and args:
-            # Send CTCP ACTION message
+            # Send CTCP ACTION message (may be split into chunks if too long)
             if self.current_target and self.irc_manager:
-                self.irc_manager.send_action(self.current_server, self.current_target, args)
-                # Show the action in our own view
+                sent_chunks = self.irc_manager.send_action(self.current_server, self.current_target, args)
+                # Show each action chunk in our own view
                 connection = self.irc_manager.connections.get(self.current_server)
                 our_nick = connection.nickname if connection else "You"
-                self.add_action_message(self.current_server, self.current_target, our_nick, args)
+                for chunk in sent_chunks:
+                    self.add_action_message(self.current_server, self.current_target, our_nick, chunk)
 
         elif cmd == "/msg":
             # /msg <nick> <message> - Send private message
@@ -1403,17 +1406,18 @@ class AccessibleIRCWindow(Gtk.Window):
                 nick = msg_parts[0].lstrip('@+%~&')
                 message = msg_parts[1]
                 if self.irc_manager:
-                    # Send the message
-                    self.irc_manager.send_message(self.current_server, nick, message)
+                    # Send the message (may be split into chunks if too long)
+                    sent_chunks = self.irc_manager.send_message(self.current_server, nick, message)
                     # Open PM window and show our message
                     pm_iter = self.add_pm_to_tree(self.current_server, nick)
                     if pm_iter:
                         selection = self.tree_view.get_selection()
                         selection.select_iter(pm_iter)
-                    # Add our message to the PM buffer
+                    # Add each sent chunk to the PM buffer
                     connection = self.irc_manager.connections.get(self.current_server)
                     our_nick = connection.nickname if connection else "You"
-                    self.add_message(self.current_server, nick, our_nick, message)
+                    for chunk in sent_chunks:
+                        self.add_message(self.current_server, nick, our_nick, chunk)
             else:
                 self.add_system_message(self.current_server, self.current_target,
                                        "Usage: /msg <nick> <message>")
@@ -1434,12 +1438,13 @@ class AccessibleIRCWindow(Gtk.Window):
                 if key not in self.message_buffers or self.message_buffers[key].get_char_count() == 0:
                     self.add_system_message(self.current_server, nick,
                                            f"Private conversation with {nick}")
-                # Send message if provided
+                # Send message if provided (may be split into chunks if too long)
                 if message and self.irc_manager:
-                    self.irc_manager.send_message(self.current_server, nick, message)
+                    sent_chunks = self.irc_manager.send_message(self.current_server, nick, message)
                     connection = self.irc_manager.connections.get(self.current_server)
                     our_nick = connection.nickname if connection else "You"
-                    self.add_message(self.current_server, nick, our_nick, message)
+                    for chunk in sent_chunks:
+                        self.add_message(self.current_server, nick, our_nick, chunk)
                 # Focus message entry
                 self.message_entry.grab_focus()
             else:
