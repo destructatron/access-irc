@@ -1141,9 +1141,13 @@ class AccessibleIRCWindow(Gtk.Window):
 
     def on_window_key_press(self, widget, event) -> bool:
         """Handle window-level keyboard shortcuts"""
-        # Ctrl+W - Close current PM or leave channel
+        # Ctrl+W - Close current PM, mentions buffer, or leave channel
         if event.keyval == Gdk.KEY_w and event.state & Gdk.ModifierType.CONTROL_MASK:
-            if self.current_target and not self.current_target.startswith("#") and self.current_target != self.current_server:
+            if self.current_target == "mentions":
+                # It's a mentions buffer - close it
+                self.on_close_mentions(None)
+                return True
+            elif self.current_target and not self.current_target.startswith("#") and self.current_target != self.current_server:
                 # It's a PM - close it
                 self.on_close_pm(None)
                 return True
@@ -1205,6 +1209,12 @@ class AccessibleIRCWindow(Gtk.Window):
             part_item = Gtk.MenuItem.new_with_mnemonic("_Leave Channel")
             part_item.connect("activate", lambda w: self.on_part_channel(None))
             menu.append(part_item)
+
+        elif identifier.startswith("mentions:"):
+            # Mentions buffer context menu
+            close_item = Gtk.MenuItem.new_with_mnemonic("_Close Mentions")
+            close_item.connect("activate", lambda w: self.on_close_mentions(None))
+            menu.append(close_item)
 
         # Only show menu if we added items
         if menu.get_children():
@@ -1664,6 +1674,31 @@ class AccessibleIRCWindow(Gtk.Window):
             iter = self.tree_store.get_iter_first()
             while iter:
                 if self.tree_store.get_value(iter, 0) == self.current_server:
+                    selection = self.tree_view.get_selection()
+                    selection.select_iter(iter)
+                    break
+                iter = self.tree_store.iter_next(iter)
+
+    def on_close_mentions(self, widget) -> None:
+        """Close current server's mentions buffer"""
+        if self.current_target == "mentions" and self.current_server:
+            server_name = self.current_server
+
+            # Remove mentions buffer from tree
+            if server_name in self.mentions_iters:
+                mentions_iter = self.mentions_iters[server_name]
+                self.tree_store.remove(mentions_iter)
+                del self.mentions_iters[server_name]
+
+                # Remove buffer from message_buffers
+                key = (server_name, "mentions")
+                if key in self.message_buffers:
+                    del self.message_buffers[key]
+
+            # Switch to server view
+            iter = self.tree_store.get_iter_first()
+            while iter:
+                if self.tree_store.get_value(iter, 0) == server_name:
                     selection = self.tree_view.get_selection()
                     selection.select_iter(iter)
                     break
