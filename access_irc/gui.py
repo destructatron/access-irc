@@ -911,8 +911,8 @@ class AccessibleIRCWindow(Gtk.Window):
                     if identifier == f"channel:{server_name}:{channel}":
                         # If we're viewing this channel, switch to server view
                         if self.current_server == server_name and self.current_target == channel:
-                            selection = self.tree_view.get_selection()
-                            selection.select_iter(iter)
+                            path = self.tree_store.get_path(iter)
+                            self.tree_view.set_cursor(path, None, False)
                         self.tree_store.remove(child_iter)
                         return
                     child_iter = self.tree_store.iter_next(child_iter)
@@ -1414,8 +1414,8 @@ class AccessibleIRCWindow(Gtk.Window):
                     # Open PM window and show our message
                     pm_iter = self.add_pm_to_tree(self.current_server, nick)
                     if pm_iter:
-                        selection = self.tree_view.get_selection()
-                        selection.select_iter(pm_iter)
+                        path = self.tree_store.get_path(pm_iter)
+                        self.tree_view.set_cursor(path, None, False)
                     # Add each sent chunk to the PM buffer
                     connection = self.irc_manager.connections.get(self.current_server)
                     our_nick = connection.nickname if connection else "You"
@@ -1434,8 +1434,8 @@ class AccessibleIRCWindow(Gtk.Window):
                 # Open PM window
                 pm_iter = self.add_pm_to_tree(self.current_server, nick)
                 if pm_iter:
-                    selection = self.tree_view.get_selection()
-                    selection.select_iter(pm_iter)
+                    path = self.tree_store.get_path(pm_iter)
+                    self.tree_view.set_cursor(path, None, False)
                 # Add system message if no message provided
                 key = (self.current_server, nick)
                 if key not in self.message_buffers or self.message_buffers[key].get_char_count() == 0:
@@ -1682,8 +1682,8 @@ class AccessibleIRCWindow(Gtk.Window):
             iter = self.tree_store.get_iter_first()
             while iter:
                 if self.tree_store.get_value(iter, 0) == self.current_server:
-                    selection = self.tree_view.get_selection()
-                    selection.select_iter(iter)
+                    path = self.tree_store.get_path(iter)
+                    self.tree_view.set_cursor(path, None, False)
                     break
                 iter = self.tree_store.iter_next(iter)
 
@@ -1707,8 +1707,8 @@ class AccessibleIRCWindow(Gtk.Window):
             iter = self.tree_store.get_iter_first()
             while iter:
                 if self.tree_store.get_value(iter, 0) == server_name:
-                    selection = self.tree_view.get_selection()
-                    selection.select_iter(iter)
+                    path = self.tree_store.get_path(iter)
+                    self.tree_view.set_cursor(path, None, False)
                     break
                 iter = self.tree_store.iter_next(iter)
 
@@ -1833,10 +1833,10 @@ class AccessibleIRCWindow(Gtk.Window):
         # Add PM to tree (or get existing)
         pm_iter = self.add_pm_to_tree(self.current_server, username)
 
-        # Select the PM in the tree
+        # Select the PM in the tree (use set_cursor to sync both selection and cursor)
         if pm_iter:
-            selection = self.tree_view.get_selection()
-            selection.select_iter(pm_iter)
+            path = self.tree_store.get_path(pm_iter)
+            self.tree_view.set_cursor(path, None, False)
 
             # The selection changed handler will take care of:
             # - Setting current_server and current_target
