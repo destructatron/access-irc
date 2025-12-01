@@ -33,6 +33,7 @@ class AccessibleIRCWindow(Gtk.Window):
             app_title: Application window title
         """
         super().__init__(title=app_title)
+        self.app_title = app_title  # Store for dynamic title updates
         # Use a larger default size to ensure all panels are visible
         self.set_default_size(1200, 800)
         # Set minimum size to ensure all UI elements are visible
@@ -909,11 +910,20 @@ class AccessibleIRCWindow(Gtk.Window):
                 while child_iter:
                     identifier = self.tree_store.get_value(child_iter, 1)
                     if identifier == f"channel:{server_name}:{channel}":
-                        # If we're viewing this channel, switch to server view
+                        # If we're viewing this channel, navigate to previous buffer
                         if self.current_server == server_name and self.current_target == channel:
-                            path = self.tree_store.get_path(iter)
-                            self.tree_view.set_cursor(path, None, False)
-                        self.tree_store.remove(child_iter)
+                            closed_identifier = f"channel:{server_name}:{channel}"
+
+                            # Get identifier of previous buffer BEFORE removal
+                            prev_identifier = self._get_previous_buffer_identifier(server_name, closed_identifier)
+
+                            # Remove the channel from tree
+                            self.tree_store.remove(child_iter)
+
+                            # Navigate to previous buffer by identifier
+                            self._navigate_to_identifier(prev_identifier)
+                        else:
+                            self.tree_store.remove(child_iter)
                         return
                     child_iter = self.tree_store.iter_next(child_iter)
                 return
@@ -938,6 +948,11 @@ class AccessibleIRCWindow(Gtk.Window):
                 # Clean up mentions tracking for this server
                 if server_name in self.mentions_iters:
                     del self.mentions_iters[server_name]
+                # Reset title if we were viewing this server
+                if self.current_server == server_name:
+                    self.current_server = None
+                    self.current_target = None
+                    self._update_window_title()
                 break
             iter = self.tree_store.iter_next(iter)
 
@@ -1142,6 +1157,27 @@ class AccessibleIRCWindow(Gtk.Window):
 
             self._scroll_to_bottom()
 
+            # Update window title to reflect current view
+            self._update_window_title()
+
+    def _update_window_title(self) -> None:
+        """Update window title based on current server and target"""
+        if not self.current_server:
+            # No server selected
+            self.set_title(self.app_title)
+        elif not self.current_target or self.current_target == self.current_server:
+            # Server view (no specific channel/PM)
+            self.set_title(f"{self.current_server} - {self.app_title}")
+        elif self.current_target == "mentions":
+            # Mentions buffer
+            self.set_title(f"Mentions - {self.current_server} - {self.app_title}")
+        elif self.current_target.startswith("#"):
+            # Channel
+            self.set_title(f"{self.current_target} - {self.current_server} - {self.app_title}")
+        else:
+            # Private message
+            self.set_title(f"PM: {self.current_target} - {self.current_server} - {self.app_title}")
+
     def on_window_key_press(self, widget, event) -> bool:
         """Handle window-level keyboard shortcuts"""
         # Ctrl+W - Close current PM, mentions buffer, or leave channel
@@ -1164,7 +1200,172 @@ class AccessibleIRCWindow(Gtk.Window):
             self.toggle_announcement_mode()
             return True
 
+        # Ctrl+PageDown - Cycle to next buffer
+        if event.keyval == Gdk.KEY_Page_Down and event.state & Gdk.ModifierType.CONTROL_MASK:
+            self._cycle_buffer(forward=True)
+            return True
+
+        # Ctrl+PageUp - Cycle to previous buffer
+        if event.keyval == Gdk.KEY_Page_Up and event.state & Gdk.ModifierType.CONTROL_MASK:
+            self._cycle_buffer(forward=False)
+            return True
+
         return False
+
+    def _get_flat_tree_items(self) -> list:
+        """
+        Get a flat list of all tree items in display order.
+
+        Returns list of tuples: (path, identifier, display_name, server_name)
+        Excludes PM folders (pm_folder:) as they're just containers.
+        """
+        items = []
+
+        def traverse(iter, parent_path=None):
+            while iter:
+                path = self.tree_store.get_path(iter)
+                display_name = self.tree_store.get_value(iter, 0)
+                identifier = self.tree_store.get_value(iter, 1)
+
+                # Skip PM folders - they're just containers
+                if not identifier.startswith("pm_folder:"):
+                    # Determine server name from identifier
+                    if identifier.startswith("server:"):
+                        server_name = identifier.split(":", 1)[1]
+                    elif identifier.startswith("channel:") or identifier.startswith("pm:") or identifier.startswith("mentions:"):
+                        server_name = identifier.split(":", 2)[1]
+                    else:
+                        server_name = ""
+
+                    items.append((path, identifier, display_name, server_name))
+
+                # Traverse children
+                child_iter = self.tree_store.iter_children(iter)
+                if child_iter:
+                    traverse(child_iter, path)
+
+                iter = self.tree_store.iter_next(iter)
+
+        root_iter = self.tree_store.get_iter_first()
+        if root_iter:
+            traverse(root_iter)
+
+        return items
+
+    def _get_current_tree_index(self, items: list) -> int:
+        """
+        Find the index of the currently selected item in the flat list.
+
+        Returns -1 if no item is selected or not found.
+        """
+        if not self.current_server:
+            return -1
+
+        # Build the identifier for current selection
+        if not self.current_target or self.current_target == self.current_server:
+            current_id = f"server:{self.current_server}"
+        elif self.current_target == "mentions":
+            current_id = f"mentions:{self.current_server}"
+        elif self.current_target.startswith("#"):
+            current_id = f"channel:{self.current_server}:{self.current_target}"
+        else:
+            current_id = f"pm:{self.current_server}:{self.current_target}"
+
+        for i, (path, identifier, display_name, server_name) in enumerate(items):
+            if identifier == current_id:
+                return i
+
+        return -1
+
+    def _cycle_buffer(self, forward: bool = True) -> None:
+        """
+        Cycle to next or previous buffer in the tree.
+
+        Args:
+            forward: True for next (Ctrl+PageDown), False for previous (Ctrl+PageUp)
+        """
+        items = self._get_flat_tree_items()
+        if not items:
+            return
+
+        current_index = self._get_current_tree_index(items)
+
+        # Calculate new index with wrapping
+        if current_index == -1:
+            # No current selection, start at beginning or end
+            new_index = 0 if forward else len(items) - 1
+        else:
+            if forward:
+                new_index = (current_index + 1) % len(items)
+            else:
+                new_index = (current_index - 1) % len(items)
+
+        # Get the new item
+        path, identifier, display_name, server_name = items[new_index]
+
+        # Expand parent if needed (for channels, PMs, mentions under a server)
+        if path.get_depth() > 1:
+            parent_path = path.copy()
+            parent_path.up()
+            self.tree_view.expand_to_path(path)
+
+        # Set cursor (this will trigger on_tree_selection_changed)
+        self.tree_view.set_cursor(path, None, False)
+
+    def _get_previous_buffer_identifier(self, server_name: str, current_identifier: str) -> str:
+        """
+        Get the identifier of the previous buffer in the same server.
+
+        Args:
+            server_name: The server to search within
+            current_identifier: The identifier of the buffer being closed
+
+        Returns:
+            Identifier of the previous buffer, or server identifier if at first item
+        """
+        items = self._get_flat_tree_items()
+
+        # Filter to only items in this server
+        server_items = [(path, ident, name, srv) for path, ident, name, srv in items
+                        if srv == server_name]
+
+        if not server_items:
+            return f"server:{server_name}"
+
+        # Find the current item's index
+        current_index = -1
+        for i, (path, ident, name, srv) in enumerate(server_items):
+            if ident == current_identifier:
+                current_index = i
+                break
+
+        if current_index == -1:
+            return f"server:{server_name}"
+
+        # Return the identifier of the previous item
+        if current_index > 1:
+            # Go to previous non-server item
+            return server_items[current_index - 1][1]
+        else:
+            # We're at the first item or server, go to server
+            return server_items[0][1]
+
+    def _navigate_to_identifier(self, target_identifier: str) -> None:
+        """
+        Navigate to a buffer by its identifier.
+
+        Args:
+            target_identifier: The identifier to navigate to
+        """
+        items = self._get_flat_tree_items()
+
+        for path, ident, name, srv in items:
+            if ident == target_identifier:
+                # Expand if needed and set cursor
+                if path.get_depth() > 1:
+                    self.tree_view.expand_to_path(path)
+                self.tree_view.set_cursor(path, None, False)
+                return
 
     def on_tree_button_press(self, widget, event) -> bool:
         """Handle button press on tree view (for context menu)"""
@@ -1675,22 +1876,26 @@ class AccessibleIRCWindow(Gtk.Window):
     def on_close_pm(self, widget) -> None:
         """Close current private message"""
         if self.current_target and not self.current_target.startswith("#") and self.current_target != self.current_server:
-            # Remove PM from tree
-            self.remove_pm_from_tree(self.current_server, self.current_target)
+            server_name = self.current_server
+            closed_identifier = f"pm:{server_name}:{self.current_target}"
 
-            # Switch to server view
-            iter = self.tree_store.get_iter_first()
-            while iter:
-                if self.tree_store.get_value(iter, 0) == self.current_server:
-                    path = self.tree_store.get_path(iter)
-                    self.tree_view.set_cursor(path, None, False)
-                    break
-                iter = self.tree_store.iter_next(iter)
+            # Get identifier of previous buffer BEFORE removal
+            prev_identifier = self._get_previous_buffer_identifier(server_name, closed_identifier)
+
+            # Remove PM from tree
+            self.remove_pm_from_tree(server_name, self.current_target)
+
+            # Navigate to previous buffer by identifier
+            self._navigate_to_identifier(prev_identifier)
 
     def on_close_mentions(self, widget) -> None:
         """Close current server's mentions buffer"""
         if self.current_target == "mentions" and self.current_server:
             server_name = self.current_server
+            closed_identifier = f"mentions:{server_name}"
+
+            # Get identifier of previous buffer BEFORE removal
+            prev_identifier = self._get_previous_buffer_identifier(server_name, closed_identifier)
 
             # Remove mentions buffer from tree
             if server_name in self.mentions_iters:
@@ -1703,14 +1908,8 @@ class AccessibleIRCWindow(Gtk.Window):
                 if key in self.message_buffers:
                     del self.message_buffers[key]
 
-            # Switch to server view
-            iter = self.tree_store.get_iter_first()
-            while iter:
-                if self.tree_store.get_value(iter, 0) == server_name:
-                    path = self.tree_store.get_path(iter)
-                    self.tree_view.set_cursor(path, None, False)
-                    break
-                iter = self.tree_store.iter_next(iter)
+            # Navigate to previous buffer by identifier
+            self._navigate_to_identifier(prev_identifier)
 
     def on_preferences(self, widget) -> None:
         """Show preferences dialog"""
