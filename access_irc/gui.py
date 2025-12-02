@@ -888,10 +888,19 @@ class AccessibleIRCWindow(Gtk.Window):
             channel: Channel name
 
         Returns:
-            TreeIter for the channel
+            TreeIter for the channel (existing or newly created)
         """
         server_name = self.tree_store.get_value(server_iter, 0)
-        return self.tree_store.append(server_iter, [channel, f"channel:{server_name}:{channel}"])
+        expected_id = f"channel:{server_name}:{channel}"
+
+        # Check if channel already exists under this server
+        child_iter = self.tree_store.iter_children(server_iter)
+        while child_iter:
+            if self.tree_store.get_value(child_iter, 1) == expected_id:
+                return child_iter  # Already exists, return existing iter
+            child_iter = self.tree_store.iter_next(child_iter)
+
+        return self.tree_store.append(server_iter, [channel, expected_id])
 
     def remove_channel_from_tree(self, server_name: str, channel: str) -> None:
         """
