@@ -35,13 +35,13 @@
   ],
   "sounds": {
     "enabled": true,
-    "mention": "access_irc/data/sounds/mention.wav",
-    "message": "access_irc/data/sounds/message.wav",
-    "privmsg": "access_irc/data/sounds/privmsg.wav",
-    "notice": "access_irc/data/sounds/notice.wav",
-    "join": "access_irc/data/sounds/join.wav",
-    "part": "access_irc/data/sounds/part.wav",
-    "quit": "access_irc/data/sounds/quit.wav"
+    "mention": "/usr/share/access-irc/sounds/mention.wav",
+    "message": "/usr/share/access-irc/sounds/message.wav",
+    "privmsg": "/usr/share/access-irc/sounds/privmsg.wav",
+    "notice": "/usr/share/access-irc/sounds/notice.wav",
+    "join": "/usr/share/access-irc/sounds/join.wav",
+    "part": "/usr/share/access-irc/sounds/part.wav",
+    "quit": "/usr/share/access-irc/sounds/quit.wav"
   },
   "ui": {
     "show_timestamps": true,

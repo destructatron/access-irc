@@ -102,8 +102,11 @@ class SoundManager:
             else:
                 self.sounds[sound_type] = None
                 self.players[sound_type] = None
+                # Sound file not found or not configured
                 if sound_path:
                     self.load_failures.append(f"{sound_type}: File not found - {sound_path}")
+                else:
+                    self.load_failures.append(f"{sound_type}: No path configured")
 
     def play(self, sound_type: str) -> None:
         """

@@ -8,7 +8,10 @@ a = Analysis(
     pathex=[],
     binaries=[],
     datas=[
+        # Bundle example config and sounds for standalone executable
+        # These are used as fallbacks when system paths don't exist
         ('access_irc/data/config.json.example', 'access_irc/data'),
+        ('access_irc/data/sounds', 'access_irc/data/sounds'),
     ],
     hiddenimports=[
         'gi',

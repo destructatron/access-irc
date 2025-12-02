@@ -14,6 +14,9 @@ from typing import Dict, List, Any, Optional
 class ConfigManager:
     """Manages application configuration stored in JSON format"""
 
+    # System-wide data directory (for Linux distro packaging)
+    SYSTEM_DATA_DIR = "/usr/share/access-irc"
+
     DEFAULT_CONFIG = {
         "nickname": "IRCUser",
         "realname": "Access IRC User",
@@ -21,13 +24,13 @@ class ConfigManager:
         "servers": [],
         "sounds": {
             "enabled": True,
-            "mention": "access_irc/data/sounds/mention.wav",
-            "message": "access_irc/data/sounds/message.wav",
-            "privmsg": "access_irc/data/sounds/privmsg.wav",
-            "notice": "access_irc/data/sounds/notice.wav",
-            "join": "access_irc/data/sounds/join.wav",
-            "part": "access_irc/data/sounds/part.wav",
-            "quit": "access_irc/data/sounds/quit.wav"
+            "mention": "/usr/share/access-irc/sounds/mention.wav",
+            "message": "/usr/share/access-irc/sounds/message.wav",
+            "privmsg": "/usr/share/access-irc/sounds/privmsg.wav",
+            "notice": "/usr/share/access-irc/sounds/notice.wav",
+            "join": "/usr/share/access-irc/sounds/join.wav",
+            "part": "/usr/share/access-irc/sounds/part.wav",
+            "quit": "/usr/share/access-irc/sounds/quit.wav"
         },
         "ui": {
             "show_timestamps": True,
@@ -76,32 +79,49 @@ class ConfigManager:
                 print("Using default configuration")
                 return self.DEFAULT_CONFIG.copy()
         else:
-            # Try to copy example config if it exists
+            # Creating new config - need to resolve sound paths for this system
+            config = None
+
+            # Try to load example config if it exists
             example_config = self._find_example_config()
             if example_config and os.path.exists(example_config):
                 try:
-                    shutil.copy(example_config, self.config_path)
-                    print(f"Created config from example: {self.config_path}")
-                    with open(self.config_path, 'r') as f:
+                    with open(example_config, 'r') as f:
                         config = json.load(f)
-                    return self._merge_with_defaults(config)
+                    config = self._merge_with_defaults(config)
                 except (IOError, json.JSONDecodeError) as e:
-                    print(f"Error copying example config: {e}")
+                    print(f"Error loading example config: {e}")
 
-            # Fallback: create default config file
-            self.save_config(self.DEFAULT_CONFIG)
-            return self.DEFAULT_CONFIG.copy()
+            # Fallback to defaults
+            if config is None:
+                config = self.DEFAULT_CONFIG.copy()
+
+            # Resolve sound paths to actual locations on this system
+            config = self._resolve_sound_paths_in_config(config)
+
+            # Save the resolved config
+            self.save_config(config)
+            print(f"Created config: {self.config_path}")
+            return config
 
     def _find_example_config(self) -> Optional[str]:
         """
         Find the example config file location
 
-        Checks for PyInstaller bundle (sys._MEIPASS) and source directory
+        Search order:
+        1. System location (/usr/share/access-irc/) for distro packages
+        2. PyInstaller bundle (sys._MEIPASS)
+        3. Source directory (for development)
 
         Returns:
             Path to example config or None if not found
         """
         import sys
+
+        # Check system location first (for Linux distro packages)
+        system_path = Path(self.SYSTEM_DATA_DIR) / "config.json.example"
+        if system_path.exists():
+            return str(system_path)
 
         # Check if running from PyInstaller bundle
         if getattr(sys, '_MEIPASS', None):
@@ -109,13 +129,77 @@ class ConfigManager:
             if example_path.exists():
                 return str(example_path)
 
-        # Check relative to this file (for source installation)
+        # Check relative to this file (for source/development installation)
         module_dir = Path(__file__).parent
         example_path = module_dir / "data" / "config.json.example"
         if example_path.exists():
             return str(example_path)
 
         return None
+
+    def _resolve_sound_path(self, sound_type: str) -> Optional[str]:
+        """
+        Find the actual location of a sound file.
+
+        Search order:
+        1. System location (/usr/share/access-irc/sounds/)
+        2. PyInstaller bundle
+        3. Source/development directory
+
+        Args:
+            sound_type: Type of sound (e.g., "mention", "message")
+
+        Returns:
+            Absolute path to sound file, or None if not found
+        """
+        import sys
+
+        sound_filename = f"{sound_type}.wav"
+
+        # Check system location (for Linux distro packages)
+        system_path = Path(self.SYSTEM_DATA_DIR) / "sounds" / sound_filename
+        if system_path.exists():
+            return str(system_path)
+
+        # Check PyInstaller bundle
+        if getattr(sys, '_MEIPASS', None):
+            bundle_path = Path(sys._MEIPASS) / "access_irc" / "data" / "sounds" / sound_filename
+            if bundle_path.exists():
+                return str(bundle_path)
+
+        # Check source/development directory (relative to this file)
+        module_dir = Path(__file__).parent
+        dev_path = module_dir / "data" / "sounds" / sound_filename
+        if dev_path.exists():
+            return str(dev_path)
+
+        return None
+
+    def _resolve_sound_paths_in_config(self, config: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Resolve all sound paths in a config to actual existing locations.
+
+        This is called when generating a new user config to ensure the saved
+        paths point to files that actually exist on this system.
+
+        Args:
+            config: Configuration dictionary
+
+        Returns:
+            Config with resolved sound paths
+        """
+        sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit"]
+
+        if "sounds" not in config:
+            config["sounds"] = {}
+
+        for sound_type in sound_types:
+            resolved_path = self._resolve_sound_path(sound_type)
+            if resolved_path:
+                config["sounds"][sound_type] = resolved_path
+            # If not found, keep the default path (user may install sounds later)
+
+        return config
 
     def _merge_with_defaults(self, config: Dict[str, Any]) -> Dict[str, Any]:
         """
