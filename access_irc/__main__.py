@@ -36,6 +36,7 @@ class AccessIRCApplication:
         callbacks = {
             "on_connect": self.on_irc_connect,
             "on_disconnect": self.on_irc_disconnect,
+            "on_connection_error": self.on_irc_connection_error,
             "on_message": self.on_irc_message,
             "on_action": self.on_irc_action,
             "on_notice": self.on_irc_notice,
@@ -174,6 +175,39 @@ class AccessIRCApplication:
         self.window.add_system_message(server_name, server_name, f"Disconnected from {server_name}")
         self.window.update_status(f"Disconnected from {server_name}")
         self.window.remove_server_from_tree(server_name)
+
+    def on_irc_connection_error(self, server_name: str, error_message: str, hint: str) -> None:
+        """
+        Handle IRC connection error
+
+        Args:
+            server_name: Name of server that failed to connect
+            error_message: Error description
+            hint: Helpful hint for resolving the issue
+        """
+        # Update status bar
+        self.window.update_status(f"Connection failed: {server_name}")
+
+        # Remove server from tree if it was added
+        self.window.remove_server_from_tree(server_name)
+
+        # Show error dialog
+        dialog = Gtk.MessageDialog(
+            transient_for=self.window,
+            modal=True,
+            message_type=Gtk.MessageType.ERROR,
+            buttons=Gtk.ButtonsType.OK,
+            text=f"Connection Failed: {server_name}"
+        )
+
+        # Build detailed message with hint
+        detail_text = error_message
+        if hint:
+            detail_text += f"\n\n{hint}"
+
+        dialog.format_secondary_text(detail_text)
+        dialog.run()
+        dialog.destroy()
 
     def on_irc_message(self, server: str, channel: str, sender: str, message: str, is_mention: bool, is_private: bool) -> None:
         """Handle incoming IRC message"""

@@ -131,12 +131,22 @@ class ServerManagementDialog(Gtk.Dialog):
     def on_add_server(self, widget) -> None:
         """Show add server dialog"""
         dialog = ServerEditDialog(self, None)
-        response = dialog.run()
 
-        if response == Gtk.ResponseType.OK:
-            server = dialog.get_server_data()
-            self.config.add_server(server)
-            self._load_servers()
+        while True:
+            response = dialog.run()
+
+            if response == Gtk.ResponseType.OK:
+                # Validate before accepting
+                error = dialog.validate()
+                if error:
+                    self._show_error("Validation Error", error)
+                    continue  # Keep dialog open for correction
+
+                server = dialog.get_server_data()
+                self.config.add_server(server)
+                self._load_servers()
+
+            break
 
         dialog.destroy()
 
@@ -152,12 +162,22 @@ class ServerManagementDialog(Gtk.Dialog):
         index = model.get_path(iter).get_indices()[0]
 
         dialog = ServerEditDialog(self, server)
-        response = dialog.run()
 
-        if response == Gtk.ResponseType.OK:
-            updated_server = dialog.get_server_data()
-            self.config.update_server(index, updated_server)
-            self._load_servers()
+        while True:
+            response = dialog.run()
+
+            if response == Gtk.ResponseType.OK:
+                # Validate before accepting
+                error = dialog.validate()
+                if error:
+                    self._show_error("Validation Error", error)
+                    continue  # Keep dialog open for correction
+
+                updated_server = dialog.get_server_data()
+                self.config.update_server(index, updated_server)
+                self._load_servers()
+
+            break
 
         dialog.destroy()
 
@@ -247,6 +267,19 @@ class ServerManagementDialog(Gtk.Dialog):
             transient_for=self,
             modal=True,
             message_type=Gtk.MessageType.INFO,
+            buttons=Gtk.ButtonsType.OK,
+            text=title
+        )
+        dialog.format_secondary_text(message)
+        dialog.run()
+        dialog.destroy()
+
+    def _show_error(self, title: str, message: str) -> None:
+        """Show error dialog"""
+        dialog = Gtk.MessageDialog(
+            transient_for=self,
+            modal=True,
+            message_type=Gtk.MessageType.ERROR,
             buttons=Gtk.ButtonsType.OK,
             text=title
         )
@@ -431,6 +464,31 @@ class ServerEditDialog(Gtk.Dialog):
         self.username_entry.set_text(self.server.get("username", ""))
         self.password_entry.set_text(self.server.get("password", ""))
         self.sasl_check.set_active(self.server.get("sasl", False))
+
+    def validate(self) -> Optional[str]:
+        """
+        Validate form fields
+
+        Returns:
+            Error message if validation fails, None if valid
+        """
+        name = self.name_entry.get_text().strip()
+        if not name:
+            return "Server name cannot be empty"
+
+        host = self.host_entry.get_text().strip()
+        if not host:
+            return "Server host cannot be empty"
+
+        # Validate host doesn't contain invalid characters
+        if any(c in host for c in [' ', '\t', '\n', '\r']):
+            return "Server host contains invalid characters"
+
+        port = int(self.port_spin.get_value())
+        if not (1 <= port <= 65535):
+            return f"Invalid port number: {port}"
+
+        return None
 
     def get_server_data(self) -> Dict[str, Any]:
         """

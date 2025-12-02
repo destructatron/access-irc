@@ -225,7 +225,11 @@ class ConfigManager:
 
     def save_config(self, config: Optional[Dict[str, Any]] = None) -> bool:
         """
-        Save configuration to file
+        Save configuration to file atomically
+
+        Uses a write-to-temp-then-rename strategy to prevent data loss
+        if the save is interrupted. Also creates a backup of the previous
+        config file.
 
         Args:
             config: Configuration to save (uses self.config if None)
@@ -236,12 +240,34 @@ class ConfigManager:
         if config is None:
             config = self.config
 
+        temp_path = f"{self.config_path}.tmp"
+        backup_path = f"{self.config_path}.backup"
+
         try:
-            with open(self.config_path, 'w') as f:
+            # Write to temporary file first
+            with open(temp_path, 'w') as f:
                 json.dump(config, f, indent=2)
+
+            # Create backup of existing config if it exists
+            if os.path.exists(self.config_path):
+                try:
+                    shutil.copy2(self.config_path, backup_path)
+                except IOError as e:
+                    # Backup failure is not fatal, just warn
+                    print(f"Warning: Could not create config backup: {e}")
+
+            # Atomic rename (on POSIX systems)
+            os.replace(temp_path, self.config_path)
             return True
+
         except IOError as e:
             print(f"Error saving config: {e}")
+            # Clean up temp file if it exists
+            try:
+                if os.path.exists(temp_path):
+                    os.remove(temp_path)
+            except OSError:
+                pass
             return False
 
     def get(self, key: str, default: Any = None) -> Any:

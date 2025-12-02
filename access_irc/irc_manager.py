@@ -5,6 +5,8 @@ Handles multiple IRC server connections using miniirc
 """
 
 import re
+import ssl
+import socket
 import threading
 from datetime import datetime
 from typing import Dict, Callable, Optional, List, Any
@@ -159,9 +161,78 @@ class IRCConnection:
 
             return True
 
-        except Exception as e:
-            print(f"Failed to connect to {self.server_name}: {e}")
+        except ssl.SSLCertVerificationError as e:
+            error_msg = f"SSL certificate verification failed for {self.server_name}"
+            hint = "If using a self-signed certificate, disable 'Verify SSL certificates' in server settings."
+            print(f"{error_msg}: {e}")
+            print(f"Hint: {hint}")
+            self._report_connection_error(error_msg, hint)
             return False
+        except ssl.SSLError as e:
+            error_msg = f"SSL/TLS error connecting to {self.server_name}"
+            hint = "Check if SSL is enabled correctly, or try disabling SSL certificate verification."
+            print(f"{error_msg}: {e}")
+            print(f"Hint: {hint}")
+            self._report_connection_error(error_msg, hint)
+            return False
+        except socket.gaierror as e:
+            error_msg = f"DNS resolution failed for {self.host}"
+            hint = "Check the server hostname is correct and your internet connection is working."
+            print(f"{error_msg}: {e}")
+            print(f"Hint: {hint}")
+            self._report_connection_error(error_msg, hint)
+            return False
+        except ConnectionRefusedError:
+            error_msg = f"Connection refused by {self.host}:{self.port}"
+            hint = "Check if the server is running and the port number is correct."
+            print(error_msg)
+            print(f"Hint: {hint}")
+            self._report_connection_error(error_msg, hint)
+            return False
+        except ConnectionResetError:
+            error_msg = f"Connection reset by {self.host}:{self.port}"
+            hint = "The server closed the connection unexpectedly."
+            print(error_msg)
+            print(f"Hint: {hint}")
+            self._report_connection_error(error_msg, hint)
+            return False
+        except socket.timeout:
+            error_msg = f"Connection timed out to {self.host}:{self.port}"
+            hint = "The server may be down or unreachable, or blocked by a firewall."
+            print(error_msg)
+            print(f"Hint: {hint}")
+            self._report_connection_error(error_msg, hint)
+            return False
+        except OSError as e:
+            error_msg = f"Network error connecting to {self.server_name}: {e}"
+            hint = ""
+            print(error_msg)
+            self._report_connection_error(error_msg, hint)
+            return False
+        except Exception as e:
+            error_msg = f"Unexpected error connecting to {self.server_name}: {type(e).__name__}: {e}"
+            hint = ""
+            print(error_msg)
+            self._report_connection_error(error_msg, hint)
+            return False
+
+    def _report_connection_error(self, error_message: str, hint: str) -> None:
+        """
+        Report a connection error via callback
+
+        Args:
+            error_message: Description of the error
+            hint: Helpful hint for resolving the issue
+        """
+        callback = self.callbacks.get("on_connection_error")
+        if callback:
+            GLib.idle_add(
+                self._call_callback,
+                "on_connection_error",
+                self.server_name,
+                error_message,
+                hint
+            )
 
     def _register_handlers(self) -> None:
         """Register IRC event handlers"""

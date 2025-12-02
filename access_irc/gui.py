@@ -25,6 +25,18 @@ except (ValueError, ImportError):
 class AccessibleIRCWindow(Gtk.Window):
     """Main window for accessible IRC client"""
 
+    # UI Layout Constants
+    DEFAULT_WINDOW_WIDTH = 1200
+    DEFAULT_WINDOW_HEIGHT = 800
+    MIN_WINDOW_WIDTH = 900
+    MIN_WINDOW_HEIGHT = 600
+    WINDOW_BORDER_WIDTH = 6
+
+    # Panel dimensions
+    LEFT_PANEL_WIDTH = 250  # Width of server/channel tree
+    USERS_LIST_WIDTH = 200  # Width of users list
+    LEFT_PANEL_WITH_BORDERS = 270  # LEFT_PANEL_WIDTH + borders + spacing
+
     def __init__(self, app_title: str = "Access IRC"):
         """
         Initialize main window
@@ -35,10 +47,10 @@ class AccessibleIRCWindow(Gtk.Window):
         super().__init__(title=app_title)
         self.app_title = app_title  # Store for dynamic title updates
         # Use a larger default size to ensure all panels are visible
-        self.set_default_size(1200, 800)
+        self.set_default_size(self.DEFAULT_WINDOW_WIDTH, self.DEFAULT_WINDOW_HEIGHT)
         # Set minimum size to ensure all UI elements are visible
-        self.set_size_request(900, 600)
-        self.set_border_width(6)
+        self.set_size_request(self.MIN_WINDOW_WIDTH, self.MIN_WINDOW_HEIGHT)
+        self.set_border_width(self.WINDOW_BORDER_WIDTH)
 
         # Store references for callbacks
         self.irc_manager = None
@@ -435,8 +447,7 @@ class AccessibleIRCWindow(Gtk.Window):
         """Update paned positions based on current window size"""
         # Set main paned position (left panel vs right panel)
         if self.main_paned:
-            # Give left panel 250px for server/channel tree
-            self.main_paned.set_position(250)
+            self.main_paned.set_position(self.LEFT_PANEL_WIDTH)
 
         # Set h_paned position (chat area vs users list)
         if self.h_paned:
@@ -444,12 +455,12 @@ class AccessibleIRCWindow(Gtk.Window):
             window_width = self.get_size()[0]
 
             # Calculate available width for h_paned
-            # Account for: left panel (250px) + borders (12px) + spacing
-            available_width = window_width - 270
+            # Account for left panel + borders + spacing
+            available_width = window_width - self.LEFT_PANEL_WITH_BORDERS
 
-            # Give users list 200px, rest to chat
+            # Give users list fixed width, rest to chat
             # This ensures users list is always visible
-            users_width = 200
+            users_width = self.USERS_LIST_WIDTH
             position = max(available_width - users_width, available_width // 2)
 
             self.h_paned.set_position(position)
@@ -549,9 +560,16 @@ class AccessibleIRCWindow(Gtk.Window):
 
         return False
 
+    # Buffer trim threshold: only trim when this percentage over the limit
+    # This reduces the frequency of trimming operations for better performance
+    BUFFER_TRIM_THRESHOLD = 1.1  # 10% over limit
+
     def _trim_buffer(self, buffer: Gtk.TextBuffer) -> None:
         """
         Trim buffer to scrollback limit if necessary
+
+        Only trims when buffer exceeds the limit by 10% (BUFFER_TRIM_THRESHOLD)
+        to reduce the frequency of trimming operations.
 
         Args:
             buffer: TextBuffer to trim
@@ -566,8 +584,10 @@ class AccessibleIRCWindow(Gtk.Window):
         # Get line count
         line_count = buffer.get_line_count()
 
-        # If we're over the limit, delete oldest lines
-        if line_count > limit:
+        # Only trim if we're more than 10% over the limit
+        # This reduces trim frequency for better performance
+        trim_threshold = int(limit * self.BUFFER_TRIM_THRESHOLD)
+        if line_count > trim_threshold:
             lines_to_delete = line_count - limit
 
             # Get iterator at start of buffer
