@@ -90,6 +90,11 @@ class AccessibleIRCWindow(Gtk.Window):
         # Values: "all", "mentions", "none"
         self.temp_announcement_mode = None
 
+        # Per-channel announcement override (toggled with F2)
+        # Key: (server_name, target), Value: True (enabled), False (disabled), or None (use fallback)
+        # When None or missing, falls back to temp_announcement_mode then config
+        self.channel_announcement_overrides: Dict[Tuple[str, str], Optional[bool]] = {}
+
         # Build UI
         self._build_ui()
 
@@ -539,17 +544,93 @@ class AccessibleIRCWindow(Gtk.Window):
         # Announce the new mode
         self.announce_to_screen_reader(announcement)
 
-    def should_announce_all_messages(self) -> bool:
-        """Check if all messages should be announced (respecting temporary override)"""
+    def toggle_channel_announcement_mode(self) -> None:
+        """
+        Toggle announcements for the current channel/PM only (F2).
+        Cycles: enabled -> disabled -> unset (falls back to Ctrl+S/config)
+        """
+        if not self.current_server or not self.current_target:
+            self.announce_to_screen_reader("No channel selected")
+            return
+
+        # Don't allow toggling for server buffers or mentions
+        if self.current_target == self.current_server or self.current_target == "mentions":
+            self.announce_to_screen_reader("Cannot toggle announcements for this buffer")
+            return
+
+        key = (self.current_server, self.current_target)
+        current = self.channel_announcement_overrides.get(key)
+
+        # Cycle: None (unset) -> True (enabled) -> False (disabled) -> None
+        if current is None:
+            self.channel_announcement_overrides[key] = True
+            announcement = f"Announcements enabled for {self.current_target}"
+        elif current is True:
+            self.channel_announcement_overrides[key] = False
+            announcement = f"Announcements disabled for {self.current_target}"
+        else:  # False
+            # Remove from dict to fall back to global setting
+            del self.channel_announcement_overrides[key]
+            announcement = f"Announcements for {self.current_target} using global setting"
+
+        self.announce_to_screen_reader(announcement)
+
+    def _should_announce_for_channel(self, server: str, target: str) -> Optional[bool]:
+        """
+        Check if there's a per-channel override for announcements.
+
+        Returns:
+            True if channel override enables announcements
+            False if channel override disables announcements
+            None if no override (should fall back to global settings)
+        """
+        key = (server, target)
+        return self.channel_announcement_overrides.get(key)
+
+    def should_announce_all_messages(self, server: Optional[str] = None, target: Optional[str] = None) -> bool:
+        """
+        Check if all messages should be announced.
+
+        Priority: per-channel override (F2) -> session toggle (Ctrl+S) -> config
+
+        Args:
+            server: Server name (optional, for per-channel check)
+            target: Channel or PM target (optional, for per-channel check)
+        """
+        # Check per-channel override first (F2 toggle)
+        if server and target:
+            channel_override = self._should_announce_for_channel(server, target)
+            if channel_override is not None:
+                return channel_override
+
+        # Fall back to session toggle (Ctrl+S)
         if self.temp_announcement_mode is not None:
             return self.temp_announcement_mode == "all"
+
+        # Fall back to config
         return self.config_manager.should_announce_all_messages() if self.config_manager else False
 
-    def should_announce_mentions(self) -> bool:
-        """Check if mentions should be announced (respecting temporary override)"""
+    def should_announce_mentions(self, server: Optional[str] = None, target: Optional[str] = None) -> bool:
+        """
+        Check if mentions should be announced.
+
+        Priority: per-channel override (F2) -> session toggle (Ctrl+S) -> config
+
+        Args:
+            server: Server name (optional, for per-channel check)
+            target: Channel or PM target (optional, for per-channel check)
+        """
+        # Check per-channel override first (F2 toggle)
+        if server and target:
+            channel_override = self._should_announce_for_channel(server, target)
+            if channel_override is not None:
+                return channel_override
+
+        # Fall back to session toggle (Ctrl+S)
         if self.temp_announcement_mode is not None:
             return self.temp_announcement_mode in ("all", "mentions")
 
+        # Fall back to config
         # Mentions should be announced if EITHER:
         # 1. "Announce mentions only" is enabled, OR
         # 2. "Announce all messages" is enabled (which includes mentions)
@@ -651,7 +732,7 @@ class AccessibleIRCWindow(Gtk.Window):
                 self.add_message_to_mentions_buffer(server, target, sender, message)
 
             # Announce mention to screen reader (if mentions OR all messages is enabled)
-            if self.should_announce_mentions():
+            if self.should_announce_mentions(server, target):
                 self.announce_to_screen_reader(f"{sender} mentioned you in {target}: {message}")
 
             # Play mention sound
@@ -660,7 +741,7 @@ class AccessibleIRCWindow(Gtk.Window):
 
         elif not is_system:
             # Regular message
-            if self.should_announce_all_messages():
+            if self.should_announce_all_messages(server, target):
                 self.announce_to_screen_reader(f"{sender} in {target}: {message}")
 
             # Play appropriate sound (PM sound for private messages, message sound for channels)
@@ -754,11 +835,11 @@ class AccessibleIRCWindow(Gtk.Window):
                         self._scroll_to_bottom()
 
             # Announce mention to screen reader
-            if self.should_announce_mentions():
+            if self.should_announce_mentions(server, target):
                 self.announce_to_screen_reader(f"{sender} {action}")
         else:
             # Regular action (not a mention)
-            if self.should_announce_all_messages():
+            if self.should_announce_all_messages(server, target):
                 self.announce_to_screen_reader(f"{sender} {action}")
 
         # Note: Sound is played in __main__.py to avoid duplicates
@@ -800,7 +881,7 @@ class AccessibleIRCWindow(Gtk.Window):
             self._scroll_to_bottom()
 
         # Announce to screen reader if configured
-        if self.should_announce_all_messages():
+        if self.should_announce_all_messages(server, target):
             self.announce_to_screen_reader(f"Notice from {sender}: {message}")
 
         # Play notice sound
@@ -1227,6 +1308,11 @@ class AccessibleIRCWindow(Gtk.Window):
         # Ctrl+S - Toggle announcement mode
         if event.keyval == Gdk.KEY_s and event.state & Gdk.ModifierType.CONTROL_MASK:
             self.toggle_announcement_mode()
+            return True
+
+        # F2 - Toggle announcements for current channel only
+        if event.keyval == Gdk.KEY_F2:
+            self.toggle_channel_announcement_mode()
             return True
 
         # Ctrl+PageDown - Cycle to next buffer
