@@ -195,6 +195,7 @@ Note that this only affects in-memory display. If logging is enabled, all messag
 - `Alt+U` - Focus users list (in channels)
 - `Ctrl+W` - Close current PM or leave channel
 - `Ctrl+S` - Cycle announcement mode (all messages → mentions only → none)
+- `F2` - Toggle announcements for current channel only (enabled → disabled → use global setting)
 - `Ctrl+Page Up` - Switch to previous channel/buffer
 - `Ctrl+Page Down` - Switch to next channel/buffer
 - Arrow keys - Navigate message history or tree view
