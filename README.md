@@ -44,7 +44,8 @@ sudo apt install python3 python3-pip python3-venv \
   libgirepository1.0-dev gcc libcairo2-dev pkg-config \
   gir1.2-gtk-3.0 at-spi2-core \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  gir1.2-gspell-1 libgspell-1-dev
+  gir1.2-gspell-1 libgspell-1-dev \
+  hunspell aspell libvoikko1
 ```
 
 **Fedora:**
@@ -52,7 +53,7 @@ sudo apt install python3 python3-pip python3-venv \
 sudo dnf install python3 python3-devel python3-pip \
   gobject-introspection-devel cairo-devel pkg-config gtk3 at-spi2-core gcc \
   gstreamer1-plugins-base gstreamer1-plugins-good \
-  gspell-devel
+  gspell-devel hunspell aspell libvoikko nuspell
 ```
 
 **Arch Linux:**
@@ -60,7 +61,7 @@ sudo dnf install python3 python3-devel python3-pip \
 sudo pacman -S python python-pip \
   gobject-introspection cairo pkgconf gtk3 at-spi2-core base-devel \
   gst-plugins-base gst-plugins-good python-gobject \
-  gspell
+  gspell hunspell hspell aspell libvoikko nuspell
 ```
 
 **Gentoo:**
@@ -68,7 +69,7 @@ sudo pacman -S python python-pip \
 sudo emerge -av dev-libs/gobject-introspection x11-libs/gtk+ \
   app-accessibility/at-spi2-core dev-util/pkgconfig \
   media-libs/gst-plugins-base media-libs/gst-plugins-good dev-python/pygobject \
-  app-text/gspell
+  app-text/gspell app-text/hunspell app-text/aspell dev-libs/libvoikko app-text/nuspell
 ```
 
 ### Application Setup
