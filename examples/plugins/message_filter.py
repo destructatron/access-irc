@@ -54,7 +54,7 @@ class Plugin:
         # Filter out specific words
         modified = message
         for word in self.filtered_words:
-            if word.lower() in modified.lower():
+            if word and word.lower() in modified.lower():
                 # Replace word with asterisks (case-insensitive)
                 import re
                 pattern = re.compile(re.escape(word), re.IGNORECASE)
@@ -125,19 +125,21 @@ class Plugin:
                 ctx.add_system_message(server, target, "No channels muted")
 
         elif subcommand == "word":
-            if subargs:
-                self.filtered_words.append(subargs)
+            if subargs and subargs.strip():
+                word = subargs.strip()
+                self.filtered_words.append(word)
                 ctx.add_system_message(server, target,
-                    f"Now filtering word: {subargs}")
+                    f"Now filtering word: {word}")
             else:
                 ctx.add_system_message(server, target,
                     "Usage: /filter word <word>")
 
         elif subcommand == "unword":
-            if subargs and subargs in self.filtered_words:
-                self.filtered_words.remove(subargs)
+            word = subargs.strip() if subargs else ""
+            if word and word in self.filtered_words:
+                self.filtered_words.remove(word)
                 ctx.add_system_message(server, target,
-                    f"No longer filtering word: {subargs}")
+                    f"No longer filtering word: {word}")
             else:
                 ctx.add_system_message(server, target,
                     "Usage: /filter unword <word>")
