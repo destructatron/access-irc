@@ -23,12 +23,13 @@ pip install -r requirements.txt
 The application uses a manager-based architecture where responsibilities are separated into distinct components:
 
 1. **ConfigManager** (`access_irc/config_manager.py`) - Handles JSON configuration persistence
-2. **SoundManager** (`access_irc/sound_manager.py`) - Manages pygame.mixer for audio notifications
+2. **SoundManager** (`access_irc/sound_manager.py`) - Manages GStreamer for audio notifications
 3. **IRCManager** (`access_irc/irc_manager.py`) - Manages multiple IRC server connections
 4. **LogManager** (`access_irc/log_manager.py`) - Manages conversation logging to disk
-5. **AccessibleIRCWindow** (`access_irc/gui.py`) - Main GTK 3 UI with AT-SPI2 integration
+5. **PluginManager** (`access_irc/plugin_manager.py`) - Discovers, loads, and executes plugins
+6. **AccessibleIRCWindow** (`access_irc/gui.py`) - Main GTK 3 UI with AT-SPI2 integration
 
-All managers are instantiated in `access_irc/__main__.py` and injected into the GUI via `set_managers()`.
+All managers are instantiated in `access_irc/__main__.py` and injected into the GUI via `set_managers()` and `set_plugin_manager()`.
 
 ### IRC Connection Threading Model
 
@@ -103,6 +104,116 @@ log_directory/
 - `set_log_directory()` raises `OSError` if directory creation fails
 - Preferences dialog catches errors and shows user-friendly error dialogs
 - Invalid server names are skipped (empty or whitespace-only)
+
+### Plugin System
+
+The application supports custom plugins via the pluggy framework. Plugins can filter messages, add custom commands, and respond to IRC events.
+
+**Architecture**:
+- `access_irc/plugin_specs.py` - Defines hook specifications using `@hookspec` decorator
+- `access_irc/plugin_manager.py` - Contains `PluginManager` and `PluginContext` classes
+- Plugins are loaded from `~/.config/access-irc/plugins/`
+
+**Plugin Discovery** (in `PluginManager.discover_and_load_plugins()`):
+1. Scans `~/.config/access-irc/plugins/` for `.py` files
+2. Also loads plugin packages (directories with `__init__.py`)
+3. Files starting with `_` are skipped
+4. Each plugin is registered with pluggy's `PluginManager`
+
+**Plugin Structure**:
+Plugins can use either a `Plugin` class or a `setup()` function:
+```python
+from access_irc.plugin_specs import hookimpl
+
+class Plugin:
+    @hookimpl
+    def on_message(self, ctx, server, target, sender, message, is_mention):
+        pass
+
+# Or alternatively:
+def setup(ctx):
+    return MyPluginInstance()
+```
+
+**Hook Types**:
+
+1. **Lifecycle Hooks** - Called during application lifecycle:
+   - `on_startup(ctx)` - Application started
+   - `on_shutdown(ctx)` - Application shutting down
+   - `on_connect(ctx, server)` - Connected to server
+   - `on_disconnect(ctx, server)` - Disconnected from server
+
+2. **Filter Hooks** - Can block or modify content (use `firstresult=True`):
+   - `filter_incoming_message(ctx, server, target, sender, message)`
+   - `filter_incoming_action(ctx, server, target, sender, action)`
+   - `filter_incoming_notice(ctx, server, target, sender, message)`
+   - `filter_outgoing_message(ctx, server, target, message)`
+
+   Return values:
+   - `None` - Allow unchanged
+   - `{'block': True}` - Block entirely
+   - `{'message': 'new text'}` or `{'action': 'new text'}` - Modify content
+
+3. **Event Hooks** - Notification only, cannot modify:
+   - `on_message(ctx, server, target, sender, message, is_mention)`
+   - `on_action(ctx, server, target, sender, action, is_mention)`
+   - `on_notice(ctx, server, target, sender, message)`
+   - `on_join(ctx, server, channel, nick)`
+   - `on_part(ctx, server, channel, nick, reason)`
+   - `on_quit(ctx, server, nick, reason)`
+   - `on_nick(ctx, server, old_nick, new_nick)`
+   - `on_kick(ctx, server, channel, kicked, kicker, reason)`
+   - `on_topic(ctx, server, channel, topic, setter)`
+
+4. **Command Hook** - Handle custom `/commands`:
+   - `on_command(ctx, server, target, command, args)` - Return `True` if handled
+
+**PluginContext API** (the `ctx` object passed to hooks):
+
+```python
+# IRC Operations
+ctx.send_message(server, target, message)
+ctx.send_action(server, target, action)
+ctx.send_notice(server, target, message)
+ctx.send_raw(server, command)
+ctx.join_channel(server, channel)
+ctx.part_channel(server, channel, reason)
+
+# UI Operations
+ctx.add_system_message(server, target, message, announce=False)
+ctx.announce(message)  # Screen reader announcement
+ctx.play_sound(type)   # 'message', 'mention', 'notice', 'join', 'part'
+
+# Information
+ctx.get_current_server()
+ctx.get_current_target()
+ctx.get_nickname(server)
+ctx.get_connected_servers()
+ctx.get_channels(server)
+ctx.get_config(key, default)  # Supports dot notation: 'ui.announce_all_messages'
+
+# Timers
+ctx.add_timer(timer_id, interval_ms, callback)  # Repeating, callback returns bool
+ctx.remove_timer(timer_id)
+ctx.add_timeout(delay_ms, callback)  # One-shot
+```
+
+**Thread Safety**:
+- All `ctx` methods that touch GTK use `GLib.idle_add()` internally
+- Plugin hooks are called from the main thread (after `GLib.idle_add()` in IRC handlers)
+- Plugins should NOT create their own threads that touch GTK
+
+**Hook Execution Flow** (in `access_irc/__main__.py`):
+1. IRC event received in IRC thread
+2. `GLib.idle_add()` schedules callback on main thread
+3. Filter hooks called first (can block/modify)
+4. If not blocked, GUI updated and event hooks called
+5. Logging and sounds handled
+
+**Error Handling**:
+- All hook calls are wrapped in try/except in PluginManager
+- Plugin errors are printed to console but don't crash the application
+- Individual plugin failures don't affect other plugins
 
 ## AT-SPI2 Accessibility Implementation
 
@@ -346,6 +457,50 @@ When adding logging for a new IRC event type:
 2. Call appropriate `irc_manager` method
 3. Add system message feedback for user confirmation
 
+Note: Plugin commands are checked first via `plugin_manager.call_command()`. Built-in commands take precedence only if no plugin handles the command.
+
+### Adding New Plugin Hooks
+
+To add a new hook that plugins can implement:
+
+1. **Define the hook spec** in `access_irc/plugin_specs.py`:
+   ```python
+   @hookspec
+   def on_new_event(self, ctx, server, arg1, arg2):
+       """Document what this hook does and when it's called."""
+       pass
+   ```
+
+2. **Add caller method** in `access_irc/plugin_manager.py`:
+   ```python
+   def call_new_event(self, server: str, arg1: str, arg2: str) -> None:
+       """Call on_new_event hooks."""
+       if self.pm and self.ctx:
+           try:
+               self.pm.hook.on_new_event(ctx=self.ctx, server=server, arg1=arg1, arg2=arg2)
+           except Exception as e:
+               print(f"Plugin error in on_new_event: {e}")
+   ```
+
+3. **Call from event handler** in `access_irc/__main__.py`:
+   ```python
+   def on_irc_new_event(self, server: str, ...):
+       # ... existing code ...
+       self.plugins.call_new_event(server, arg1, arg2)
+   ```
+
+For filter hooks (that can block/modify), use `@hookspec(firstresult=True)` and return the filter result to the caller.
+
+### Writing Example Plugins
+
+When creating example plugins in `examples/plugins/`:
+
+1. Include docstring explaining what the plugin does
+2. Implement `on_startup` to show a loaded message
+3. Use `on_command` for user-facing commands with help text
+4. Handle errors gracefully (don't crash on bad input)
+5. Document commands in the plugin's docstring
+
 ### Adding New Accessibility Announcements
 
 1. Call `self.window.announce_to_screen_reader(message)` from `access_irc/__main__.py` callbacks
@@ -403,6 +558,9 @@ This combination makes the text read-only but fully navigable, which is essentia
    ```
 7. **Logging**: Check both log directory is set AND server has logging enabled before logging
 8. **Path Security**: Always sanitize server/channel names before using in file paths (LogManager handles this)
+9. **Plugin Threading**: Plugin hooks are called on the main thread; `ctx` methods handle `GLib.idle_add()` internally
+10. **Plugin Errors**: Always wrap plugin hook calls in try/except to prevent one bad plugin from crashing the app
+11. **Filter Hook Order**: Filter hooks use `firstresult=True`, so only the first plugin to return non-None wins
 
 ## System Dependencies
 
