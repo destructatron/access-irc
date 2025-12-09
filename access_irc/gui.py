@@ -11,6 +11,7 @@ from gi.repository import Gtk, Gdk, GLib, Pango
 
 from typing import Optional, Dict, Tuple
 from datetime import datetime
+import subprocess
 
 # Try to import gtkspell for spell checking
 try:
@@ -1894,6 +1895,92 @@ class AccessibleIRCWindow(Gtk.Window):
 
         elif cmd == "/quit":
             self.on_quit(None)
+
+        elif cmd == "/exec":
+            # /exec [-o] <command> - Execute shell command
+            # -o: send output to current channel/PM instead of displaying locally
+            if not args:
+                self.add_system_message(self.current_server, self.current_target,
+                                       "Usage: /exec [-o] <command>")
+                return
+
+            send_output = False
+            exec_command = args
+
+            # Check for -o flag
+            if args.startswith("-o "):
+                send_output = True
+                exec_command = args[3:].strip()
+            elif args == "-o":
+                self.add_system_message(self.current_server, self.current_target,
+                                       "Usage: /exec [-o] <command>")
+                return
+
+            if not exec_command:
+                self.add_system_message(self.current_server, self.current_target,
+                                       "Usage: /exec [-o] <command>")
+                return
+
+            # Execute command and capture output
+            try:
+                result = subprocess.run(
+                    exec_command,
+                    shell=True,
+                    capture_output=True,
+                    text=True,
+                    timeout=30
+                )
+                output = result.stdout
+                if result.stderr:
+                    output = output + result.stderr if output else result.stderr
+            except subprocess.TimeoutExpired:
+                self.add_system_message(self.current_server, self.current_target,
+                                       f"Command timed out: {exec_command}")
+                return
+            except Exception as e:
+                self.add_system_message(self.current_server, self.current_target,
+                                       f"Error executing command: {e}")
+                return
+
+            # Process output
+            if not output or not output.strip():
+                self.add_system_message(self.current_server, self.current_target,
+                                       f"Command produced no output: {exec_command}")
+                return
+
+            # Split output into lines
+            lines = output.rstrip('\n').split('\n')
+
+            if send_output:
+                # Send output to current channel/PM as messages
+                if self.current_target and self.irc_manager:
+                    for line in lines:
+                        if line:  # Skip empty lines
+                            sent_chunks = self.irc_manager.send_message(
+                                self.current_server, self.current_target, line
+                            )
+                            # Show in our own view
+                            connection = self.irc_manager.connections.get(self.current_server)
+                            our_nick = connection.nickname if connection else "You"
+                            for chunk in sent_chunks:
+                                self.add_message(self.current_server, self.current_target,
+                                               our_nick, chunk)
+                else:
+                    self.add_system_message(self.current_server, self.current_target,
+                                           "No active channel or PM to send output to")
+            else:
+                # Display output locally only
+                # Determine if we should announce based on settings
+                should_announce = (
+                    self.config_manager and
+                    self.config_manager.should_announce_all_messages()
+                )
+                for line in lines:
+                    if line:  # Skip empty lines
+                        self.add_system_message(
+                            self.current_server, self.current_target,
+                            line, announce=should_announce
+                        )
 
         else:
             self.add_system_message(self.current_server, self.current_target,
