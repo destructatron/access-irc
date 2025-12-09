@@ -1,6 +1,9 @@
 # Core IRC functionality
 miniirc>=1.9.0
 
+# Plugin system
+pluggy>=1.0.0
+
 # GUI - requires system libraries (see README)
 # Note: PyGObject needs libgirepository, GTK3, at-spi2-core, and GStreamer installed via system package manager
 # Sound support requires: gstreamer1.0-plugins-base, gstreamer1.0-plugins-good (system packages)

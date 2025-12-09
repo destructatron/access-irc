@@ -16,6 +16,7 @@ from .sound_manager import SoundManager
 from .irc_manager import IRCManager
 from .log_manager import LogManager
 from .gui import AccessibleIRCWindow
+from .plugin_manager import PluginManager
 
 
 class AccessIRCApplication:
@@ -57,6 +58,11 @@ class AccessIRCApplication:
         self.window.set_managers(self.irc, self.sound, self.config, self.log)
         self.window.connect("destroy", self.on_window_destroy)
 
+        # Initialize plugin manager
+        self.plugins = PluginManager()
+        self.plugins.set_managers(self.irc, self.config, self.sound, self.log, self.window)
+        self.window.set_plugin_manager(self.plugins)
+
         # Handle Ctrl+C gracefully
         signal.signal(signal.SIGINT, signal.SIG_DFL)
 
@@ -69,6 +75,14 @@ class AccessIRCApplication:
         """
         self.window.show_all()
         self.window.update_status("Ready")
+
+        # Load plugins
+        num_plugins = self.plugins.discover_and_load_plugins()
+        if num_plugins > 0:
+            self.window.update_status(f"Loaded {num_plugins} plugin(s)")
+
+        # Call plugin startup hooks
+        self.plugins.call_startup()
 
         # Show sound loading errors if any
         if self.sound_load_failures:
@@ -167,6 +181,9 @@ class AccessIRCApplication:
         self.window.add_system_message(server_name, server_name, f"Connected to {server_name}")
         self.window.update_status(f"Connected to {server_name}")
 
+        # Call plugin hook
+        self.plugins.call_connect(server_name)
+
         # Add server to tree if not already there
         # (It should already be added when connection was initiated)
 
@@ -175,6 +192,9 @@ class AccessIRCApplication:
         self.window.add_system_message(server_name, server_name, f"Disconnected from {server_name}")
         self.window.update_status(f"Disconnected from {server_name}")
         self.window.remove_server_from_tree(server_name)
+
+        # Call plugin hook
+        self.plugins.call_disconnect(server_name)
 
     def on_irc_connection_error(self, server_name: str, error_message: str, hint: str) -> None:
         """
@@ -211,6 +231,14 @@ class AccessIRCApplication:
 
     def on_irc_message(self, server: str, channel: str, sender: str, message: str, is_mention: bool, is_private: bool) -> None:
         """Handle incoming IRC message"""
+        # Apply plugin filter
+        filter_result = self.plugins.filter_incoming_message(server, channel, sender, message)
+        if filter_result:
+            if filter_result.get('block'):
+                return  # Message blocked by plugin
+            if 'message' in filter_result:
+                message = filter_result['message']
+
         self.window.add_message(server, channel, sender, message, is_mention=is_mention)
 
         # If this is a PM (channel doesn't start with #), add it to the tree
@@ -222,6 +250,9 @@ class AccessIRCApplication:
         if self._should_log_server(server):
             self.log.log_message(server, channel, sender, message)
 
+        # Call plugin hook (after filtering)
+        self.plugins.call_message(server, channel, sender, message, is_mention)
+
         # Play appropriate sound
         if self.sound:
             if is_private:
@@ -232,6 +263,14 @@ class AccessIRCApplication:
 
     def on_irc_action(self, server: str, channel: str, sender: str, action: str, is_mention: bool, is_private: bool) -> None:
         """Handle incoming IRC action (/me)"""
+        # Apply plugin filter
+        filter_result = self.plugins.filter_incoming_action(server, channel, sender, action)
+        if filter_result:
+            if filter_result.get('block'):
+                return  # Action blocked by plugin
+            if 'action' in filter_result:
+                action = filter_result['action']
+
         self.window.add_action_message(server, channel, sender, action, is_mention=is_mention)
 
         # If this is a PM (channel doesn't start with #), add it to the tree
@@ -241,6 +280,9 @@ class AccessIRCApplication:
         # Log action if enabled for this server
         if self._should_log_server(server):
             self.log.log_action(server, channel, sender, action)
+
+        # Call plugin hook (after filtering)
+        self.plugins.call_action(server, channel, sender, action, is_mention)
 
         # Play appropriate sound
         if self.sound:
@@ -254,6 +296,14 @@ class AccessIRCApplication:
 
     def on_irc_notice(self, server: str, channel: str, sender: str, message: str) -> None:
         """Handle incoming IRC notice"""
+        # Apply plugin filter
+        filter_result = self.plugins.filter_incoming_notice(server, channel, sender, message)
+        if filter_result:
+            if filter_result.get('block'):
+                return  # Notice blocked by plugin
+            if 'message' in filter_result:
+                message = filter_result['message']
+
         self.window.add_notice_message(server, channel, sender, message)
 
         # Note: Private notices are now routed to the server buffer instead of
@@ -262,6 +312,9 @@ class AccessIRCApplication:
         # Log notice if enabled for this server
         if self._should_log_server(server):
             self.log.log_notice(server, channel, sender, message)
+
+        # Call plugin hook (after filtering)
+        self.plugins.call_notice(server, channel, sender, message)
 
     def on_irc_join(self, server: str, channel: str, nick: str) -> None:
         """Handle user join"""
@@ -291,6 +344,9 @@ class AccessIRCApplication:
         # Log join if enabled for this server
         if self._should_log_server(server):
             self.log.log_join(server, channel, nick)
+
+        # Call plugin hook
+        self.plugins.call_join(server, channel, nick)
 
         # Play join sound and announce if "all messages" mode is active
         if self.sound:
@@ -322,6 +378,9 @@ class AccessIRCApplication:
         if self._should_log_server(server):
             self.log.log_part(server, channel, nick, reason)
 
+        # Call plugin hook
+        self.plugins.call_part(server, channel, nick, reason)
+
         # Play part sound and announce if "all messages" mode is active
         if self.sound:
             self.sound.play_part()
@@ -346,6 +405,9 @@ class AccessIRCApplication:
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
+
+        # Call plugin hook
+        self.plugins.call_quit(server, nick, reason)
 
         # Play quit sound
         if self.sound:
@@ -389,6 +451,9 @@ class AccessIRCApplication:
         # Update users list if we're viewing a channel on this server
         if self.window.current_server == server and self.window.current_target:
             self.window.update_users_list()
+
+        # Call plugin hook
+        self.plugins.call_nick(server, old_nick, new_nick)
 
         # Announce if "all messages" mode is active (for other users' nick changes)
         if not is_own_nick and self.window.should_announce_all_messages():
@@ -439,6 +504,9 @@ class AccessIRCApplication:
         elif self.window.current_server == server and self.window.current_target == channel:
             self.window.update_users_list()
 
+        # Call plugin hook
+        self.plugins.call_kick(server, channel, kicked, kicker, reason)
+
     def on_irc_server_message(self, server: str, message: str) -> None:
         """
         Handle server messages (like WHOIS replies, MOTD, etc.)
@@ -464,6 +532,9 @@ class AccessIRCApplication:
 
     def on_window_destroy(self, widget) -> None:
         """Handle window destruction"""
+        # Call plugin shutdown hooks
+        self.plugins.call_shutdown()
+
         # Disconnect all servers with configured quit message
         quit_message = self.config.get_quit_message()
         self.irc.disconnect_all(quit_message)

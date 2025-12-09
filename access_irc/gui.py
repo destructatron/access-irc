@@ -57,6 +57,7 @@ class AccessibleIRCWindow(Gtk.Window):
         self.irc_manager = None
         self.sound_manager = None
         self.config_manager = None
+        self.plugin_manager = None
 
         # Current context
         self.current_server: Optional[str] = None
@@ -485,6 +486,15 @@ class AccessibleIRCWindow(Gtk.Window):
         self.sound_manager = sound_manager
         self.config_manager = config_manager
         self.log_manager = log_manager
+
+    def set_plugin_manager(self, plugin_manager) -> None:
+        """
+        Set plugin manager reference
+
+        Args:
+            plugin_manager: PluginManager instance
+        """
+        self.plugin_manager = plugin_manager
 
     def announce_to_screen_reader(self, message: str) -> None:
         """
@@ -1678,6 +1688,17 @@ class AccessibleIRCWindow(Gtk.Window):
             if message.startswith("/"):
                 self._handle_command(message)
             else:
+                # Apply plugin outgoing filter
+                if self.plugin_manager:
+                    filter_result = self.plugin_manager.filter_outgoing_message(
+                        self.current_server, self.current_target, message
+                    )
+                    if filter_result:
+                        if filter_result.get('block'):
+                            return  # Message blocked by plugin
+                        if 'message' in filter_result:
+                            message = filter_result['message']
+
                 # Send message (may be split into chunks if too long)
                 sent_chunks = self.irc_manager.send_message(self.current_server, self.current_target, message)
 
@@ -1699,6 +1720,13 @@ class AccessibleIRCWindow(Gtk.Window):
         parts = command.split(None, 1)
         cmd = parts[0].lower()
         args = parts[1] if len(parts) > 1 else ""
+
+        # Try plugin commands first (without leading /)
+        cmd_name = cmd[1:] if cmd.startswith("/") else cmd
+        if self.plugin_manager and self.plugin_manager.call_command(
+            self.current_server or "", self.current_target or "", cmd_name, args
+        ):
+            return  # Plugin handled the command
 
         if cmd == "/join" and args:
             if self.irc_manager:
