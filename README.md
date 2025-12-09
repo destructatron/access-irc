@@ -18,7 +18,7 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 ### IRC Functionality
 - Multi-server support with autoconnect option
 - Channel and private message management
-- Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/list`, `/quit`, `/raw`
+- Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/list`, `/quit`, `/raw`, `/exec`
 - **Channel list browser**: Search and browse available channels with pagination
 - User lists with mode prefixes (@, +, %, ~, &)
 - Tab completion for usernames in channels (press Tab to cycle through matches)
@@ -26,6 +26,7 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 - SSL/TLS with self-signed certificate support
 - IRC bouncer compatibility (ZNC, etc.)
 - **Conversation logging**: Per-server logging with date-based rotation
+- **Plugin system**: Extend functionality with custom Python scripts (pluggy-based)
 
 ### Notifications
 - GStreamer-based sound notifications for mentions, messages, joins, parts, and notices
@@ -243,12 +244,70 @@ The `/list` command opens a dialog to browse and join channels on the current se
 - Channels display in a table with Channel, Users, and Topic columns
 - Status shows current range (e.g., "Showing 1-100 of 500 channels")
 
+### Plugin System
+
+Access IRC supports custom plugins for extending functionality. Plugins can filter messages, add custom commands, respond to IRC events, and more.
+
+**Installation:**
+Plugins are Python files placed in `~/.config/access-irc/plugins/`. They are loaded automatically when Access IRC starts.
+
+```bash
+# Create the plugins directory
+mkdir -p ~/.config/access-irc/plugins
+
+# Copy an example plugin
+cp examples/plugins/message_filter.py ~/.config/access-irc/plugins/
+```
+
+**Example Plugins:**
+The `examples/plugins/` directory contains ready-to-use plugins:
+
+- **message_filter.py** - Filter messages by user, word, or channel:
+  - `/filter ignore <nick>` - Block messages from a user
+  - `/filter word <word>` - Replace words with asterisks
+  - `/filter mute <#channel>` - Mute an entire channel
+  - `/filter list` - Show current filters
+
+- **highlight_words.py** - Custom keyword notifications:
+  - `/highlight add <word>` - Get announcements when a word appears
+  - `/highlight list` - Show highlight words
+
+- **auto_greet.py** - Auto-greet users joining channels:
+  - `/greet enable <#channel>` - Enable for a channel
+  - `/greet message <text>` - Set custom greeting
+
+**Writing Plugins:**
+See `examples/plugins/README.md` for the full plugin API documentation. Basic structure:
+
+```python
+from access_irc.plugin_specs import hookimpl
+
+class Plugin:
+    @hookimpl
+    def on_message(self, ctx, server, target, sender, message, is_mention):
+        # React to messages
+        pass
+
+    @hookimpl
+    def filter_incoming_message(self, ctx, server, target, sender, message):
+        # Return {'block': True} to block, {'message': 'new'} to modify
+        return None
+
+    @hookimpl
+    def on_command(self, ctx, server, target, command, args):
+        if command == "mycommand":
+            ctx.add_system_message(server, target, "Hello from plugin!")
+            return True  # Command handled
+        return False
+```
+
 ## Technology
 
 - **GUI**: GTK 3 via PyGObject
 - **IRC**: miniirc
 - **Audio**: GStreamer
 - **Accessibility**: AT-SPI2
+- **Plugins**: pluggy
 - **Language**: Python 3.7+
 
 ## Architecture
@@ -261,6 +320,8 @@ Access IRC uses a manager-based architecture:
 - `access_irc/config_manager.py` - JSON configuration
 - `access_irc/sound_manager.py` - GStreamer audio notifications
 - `access_irc/log_manager.py` - Conversation logging to disk
+- `access_irc/plugin_manager.py` - Plugin discovery and hook execution
+- `access_irc/plugin_specs.py` - Plugin hook specifications
 - `access_irc/server_dialog.py` - Server management UI
 - `access_irc/preferences_dialog.py` - Preferences UI
 
