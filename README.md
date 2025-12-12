@@ -41,12 +41,14 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 ```bash
 sudo apt update
 sudo apt install python3 python3-pip python3-venv \
-  libgirepository1.0-dev gcc libcairo2-dev pkg-config \
+  libgirepository1.0-dev libgirepository-2.0-dev gcc libcairo2-dev pkg-config \
   gir1.2-gtk-3.0 at-spi2-core \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   gir1.2-gspell-1 libgspell-1-dev \
   hunspell aspell libvoikko1
 ```
+
+**Note:** Older systems may not have `libgirepository-2.0-dev` available - you can omit it if apt reports it as not found. Newer systems (Ubuntu 24.04+, Debian 13+) require it.
 
 **Fedora:**
 ```bash
