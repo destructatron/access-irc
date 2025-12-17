@@ -12,15 +12,15 @@ from gi.repository import Gtk, Gdk, GLib, Pango
 from typing import Optional, Dict, Tuple
 from datetime import datetime
 import subprocess
+import locale
 
-# Try to import gtkspell for spell checking
+# Try to import pygtkspellcheck for spell checking (uses PANGO_UNDERLINE_ERROR for accessibility)
 try:
-    gi.require_version('Gspell', '1')
-    from gi.repository import Gspell
-    GSPELL_AVAILABLE = True
-except (ValueError, ImportError):
-    GSPELL_AVAILABLE = False
-    print("Warning: Gspell not available. Spell checking will be disabled.")
+    from gtkspellcheck import SpellChecker
+    SPELLCHECK_AVAILABLE = True
+except ImportError:
+    SPELLCHECK_AVAILABLE = False
+    print("Warning: pygtkspellcheck not available. Spell checking will be disabled.")
 
 
 class AccessibleIRCWindow(Gtk.Window):
@@ -389,29 +389,24 @@ class AccessibleIRCWindow(Gtk.Window):
         self.message_entry.modify_font(font_desc)
 
         # Add spell checking if available
-        if GSPELL_AVAILABLE:
+        # pygtkspellcheck uses PANGO_UNDERLINE_ERROR which Orca recognizes for accessibility
+        if SPELLCHECK_AVAILABLE:
             try:
-                # Get the default language
-                language = Gspell.Language.get_default()
-                if language is None:
-                    # Fallback to English if no default language
-                    language = Gspell.Language.lookup("en_US")
-
-                if language is not None:
-                    # Create checker with the language
-                    checker = Gspell.Checker.new(language)
-
-                    # Get the text buffer and wrap it with Gspell
-                    text_buffer = self.message_entry.get_buffer()
-                    gspell_buffer = Gspell.TextBuffer.get_from_gtk_text_buffer(text_buffer)
-                    gspell_buffer.set_spell_checker(checker)
-
-                    # Get the text view and wrap it with Gspell
-                    gspell_view = Gspell.TextView.get_from_gtk_text_view(self.message_entry)
-                    gspell_view.set_inline_spell_checking(True)
-                    gspell_view.set_enable_language_menu(True)
+                # Get the system locale for spell checking language
+                # locale.getlocale() returns (language, encoding) like ('en_US', 'UTF-8')
+                system_locale = locale.getlocale()[0]
+                if system_locale:
+                    # Use full locale (e.g., 'en_US') or just language code (e.g., 'en')
+                    spell_language = system_locale.replace('.', '_').split('_')[0]
+                    if '_' in system_locale:
+                        # Try full locale first (e.g., 'en_US')
+                        spell_language = system_locale.split('.')[0]
                 else:
-                    print("Warning: No spell checking language available")
+                    spell_language = 'en'
+
+                # Create spell checker attached to the text view
+                # pygtkspellcheck automatically handles right-click context menu
+                self._spell_checker = SpellChecker(self.message_entry, language=spell_language)
             except Exception as e:
                 print(f"Warning: Failed to enable spell checking: {e}")
 
