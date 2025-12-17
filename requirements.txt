@@ -9,6 +9,11 @@ pluggy>=1.0.0
 # Sound support requires: gstreamer1.0-plugins-base, gstreamer1.0-plugins-good (system packages)
 PyGObject>=3.40.0
 
+# Spell checking with screen reader accessibility support
+# Uses PANGO_UNDERLINE_ERROR which Orca recognizes as spelling errors
+# Requires libenchant system library
+pygtkspellcheck>=5.0.0
+
 # Optional: For generating test sounds
 numpy>=1.20.0
 scipy>=1.7.0
