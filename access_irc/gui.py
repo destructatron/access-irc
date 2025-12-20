@@ -731,7 +731,7 @@ class AccessibleIRCWindow(Gtk.Window):
             self.message_view.set_buffer(buffer)
             self._scroll_to_bottom()
 
-        # Handle announcements and sounds
+        # Handle announcements (sounds are played in __main__.py after plugin filtering)
         if is_mention:
             # Add to mentions buffer if this is a channel mention (not PM)
             if target.startswith("#"):
@@ -741,21 +741,10 @@ class AccessibleIRCWindow(Gtk.Window):
             if self.should_announce_mentions(server, target):
                 self.announce_to_screen_reader(f"{sender} mentioned you in {target}: {message}")
 
-            # Play mention sound
-            if self.sound_manager:
-                self.sound_manager.play_mention()
-
         elif not is_system:
             # Regular message
             if self.should_announce_all_messages(server, target):
                 self.announce_to_screen_reader(f"{sender} in {target}: {message}")
-
-            # Play appropriate sound (PM sound for private messages, message sound for channels)
-            if self.sound_manager:
-                if not target.startswith("#"):
-                    self.sound_manager.play_privmsg()
-                else:
-                    self.sound_manager.play_message()
 
     def add_system_message(self, server: str, target: str, message: str, announce: bool = False) -> None:
         """
@@ -890,9 +879,7 @@ class AccessibleIRCWindow(Gtk.Window):
         if self.should_announce_all_messages(server, target):
             self.announce_to_screen_reader(f"Notice from {sender}: {message}")
 
-        # Play notice sound
-        if self.sound_manager:
-            self.sound_manager.play_notice()
+        # Note: Sound is played in __main__.py after plugin filtering
 
     def add_message_to_mentions_buffer(self, server: str, channel: str, sender: str, message: str) -> None:
         """
@@ -1702,6 +1689,13 @@ class AccessibleIRCWindow(Gtk.Window):
                 for chunk in sent_chunks:
                     self.add_message(self.current_server, self.current_target, nickname, chunk)
 
+                # Play sound for sent message
+                if self.sound_manager and sent_chunks:
+                    if not self.current_target.startswith("#"):
+                        self.sound_manager.play_privmsg()
+                    else:
+                        self.sound_manager.play_message()
+
         # Clear TextView buffer
         buffer.set_text("")
 
@@ -1741,6 +1735,9 @@ class AccessibleIRCWindow(Gtk.Window):
                 our_nick = connection.nickname if connection else "You"
                 for chunk in sent_chunks:
                     self.add_action_message(self.current_server, self.current_target, our_nick, chunk)
+                # Play sound for sent action
+                if self.sound_manager and sent_chunks:
+                    self.sound_manager.play_message()
 
         elif cmd == "/msg":
             # /msg <nick> <message> - Send private message
@@ -1761,6 +1758,9 @@ class AccessibleIRCWindow(Gtk.Window):
                     our_nick = connection.nickname if connection else "You"
                     for chunk in sent_chunks:
                         self.add_message(self.current_server, nick, our_nick, chunk)
+                    # Play sound for sent PM
+                    if self.sound_manager and sent_chunks:
+                        self.sound_manager.play_privmsg()
             else:
                 self.add_system_message(self.current_server, self.current_target,
                                        "Usage: /msg <nick> <message>")
@@ -1788,6 +1788,9 @@ class AccessibleIRCWindow(Gtk.Window):
                     our_nick = connection.nickname if connection else "You"
                     for chunk in sent_chunks:
                         self.add_message(self.current_server, nick, our_nick, chunk)
+                    # Play sound for sent PM
+                    if self.sound_manager and sent_chunks:
+                        self.sound_manager.play_privmsg()
                 # Focus message entry
                 self.message_entry.grab_focus()
             else:
@@ -1977,17 +1980,26 @@ class AccessibleIRCWindow(Gtk.Window):
             if send_output:
                 # Send output to current channel/PM as messages
                 if self.current_target and self.irc_manager:
+                    any_sent = False
                     for line in lines:
                         if line:  # Skip empty lines
                             sent_chunks = self.irc_manager.send_message(
                                 self.current_server, self.current_target, line
                             )
+                            if sent_chunks:
+                                any_sent = True
                             # Show in our own view
                             connection = self.irc_manager.connections.get(self.current_server)
                             our_nick = connection.nickname if connection else "You"
                             for chunk in sent_chunks:
                                 self.add_message(self.current_server, self.current_target,
                                                our_nick, chunk)
+                    # Play sound once after all lines sent
+                    if self.sound_manager and any_sent:
+                        if not self.current_target.startswith("#"):
+                            self.sound_manager.play_privmsg()
+                        else:
+                            self.sound_manager.play_message()
                 else:
                     self.add_system_message(self.current_server, self.current_target,
                                            "No active channel or PM to send output to")

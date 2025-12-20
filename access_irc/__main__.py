@@ -257,8 +257,9 @@ class AccessIRCApplication:
         if self.sound:
             if is_private:
                 self.sound.play_privmsg()
-            elif not is_mention:
-                # Only play message sound if it's not a mention (mentions have their own sound)
+            elif is_mention:
+                self.sound.play_mention()
+            else:
                 self.sound.play_message()
 
     def on_irc_action(self, server: str, channel: str, sender: str, action: str, is_mention: bool, is_private: bool) -> None:
@@ -315,6 +316,10 @@ class AccessIRCApplication:
 
         # Call plugin hook (after filtering)
         self.plugins.call_notice(server, channel, sender, message)
+
+        # Play notice sound
+        if self.sound:
+            self.sound.play_notice()
 
     def on_irc_join(self, server: str, channel: str, nick: str) -> None:
         """Handle user join"""
