@@ -66,6 +66,9 @@ class PreferencesDialog(Gtk.Dialog):
         # Accessibility tab
         notebook.append_page(self._create_accessibility_tab(), Gtk.Label(label="Accessibility"))
 
+        # DCC tab
+        notebook.append_page(self._create_dcc_tab(), Gtk.Label(label="DCC"))
+
         self.show_all()
 
     def _create_user_tab(self) -> Gtk.Box:
@@ -220,7 +223,9 @@ class PreferencesDialog(Gtk.Dialog):
             ("notice", "_Notice sound:"),
             ("join", "_Join sound:"),
             ("part", "_Part sound:"),
-            ("quit", "_Quit sound:")
+            ("quit", "_Quit sound:"),
+            ("dcc_receive_complete", "DCC _receive complete:"),
+            ("dcc_send_complete", "DCC _send complete:")
         ]:
             label = Gtk.Label.new_with_mnemonic(label_text)
             label.set_halign(Gtk.Align.END)
@@ -297,6 +302,168 @@ class PreferencesDialog(Gtk.Dialog):
 
         return box
 
+    def _create_dcc_tab(self) -> Gtk.Box:
+        """Create DCC settings tab"""
+
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        box.set_border_width(12)
+
+        # Section: File Transfer Settings
+        label = Gtk.Label(label="<b>File Transfer Settings</b>")
+        label.set_use_markup(True)
+        label.set_halign(Gtk.Align.START)
+        box.pack_start(label, False, False, 0)
+
+        # Auto-accept checkbox
+        self.dcc_auto_accept = Gtk.CheckButton.new_with_mnemonic(
+            "_Auto-accept incoming DCC transfers"
+        )
+        self.dcc_auto_accept.connect("toggled", self.on_dcc_auto_accept_toggled)
+        box.pack_start(self.dcc_auto_accept, False, False, 0)
+
+        # Download directory
+        dl_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        dl_label = Gtk.Label.new_with_mnemonic("_Download directory:")
+        dl_label.set_halign(Gtk.Align.END)
+        dl_hbox.pack_start(dl_label, False, False, 0)
+
+        self.dcc_download_entry = Gtk.Entry()
+        self.dcc_download_entry.set_placeholder_text("Directory for received files")
+        self.dcc_download_entry.set_hexpand(True)
+        dl_label.set_mnemonic_widget(self.dcc_download_entry)
+        dl_hbox.pack_start(self.dcc_download_entry, True, True, 0)
+
+        browse_btn = Gtk.Button(label="Browse...")
+        browse_btn.connect("clicked", self.on_browse_dcc_directory)
+        dl_hbox.pack_start(browse_btn, False, False, 0)
+
+        box.pack_start(dl_hbox, False, False, 0)
+
+        box.pack_start(Gtk.Separator(), False, False, 6)
+
+        # Section: Network Settings
+        label = Gtk.Label(label="<b>Network Settings</b>")
+        label.set_use_markup(True)
+        label.set_halign(Gtk.Align.START)
+        box.pack_start(label, False, False, 0)
+
+        # Port range
+        port_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        port_label = Gtk.Label.new_with_mnemonic("_Port range:")
+        port_label.set_halign(Gtk.Align.END)
+        port_hbox.pack_start(port_label, False, False, 0)
+
+        # Start port
+        adjustment_start = Gtk.Adjustment(value=1024, lower=1024, upper=65535, step_increment=1)
+        self.dcc_port_start = Gtk.SpinButton()
+        self.dcc_port_start.set_adjustment(adjustment_start)
+        self.dcc_port_start.set_digits(0)
+        port_label.set_mnemonic_widget(self.dcc_port_start)
+        port_hbox.pack_start(self.dcc_port_start, False, False, 0)
+
+        port_hbox.pack_start(Gtk.Label(label="to"), False, False, 0)
+
+        # End port
+        adjustment_end = Gtk.Adjustment(value=65535, lower=1024, upper=65535, step_increment=1)
+        self.dcc_port_end = Gtk.SpinButton()
+        self.dcc_port_end.set_adjustment(adjustment_end)
+        self.dcc_port_end.set_digits(0)
+        port_hbox.pack_start(self.dcc_port_end, False, False, 0)
+
+        box.pack_start(port_hbox, False, False, 0)
+
+        # External IP
+        ip_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+
+        ip_label = Gtk.Label.new_with_mnemonic("_External IP (for NAT):")
+        ip_label.set_halign(Gtk.Align.END)
+        ip_hbox.pack_start(ip_label, False, False, 0)
+
+        self.dcc_external_ip = Gtk.Entry()
+        self.dcc_external_ip.set_placeholder_text("Leave empty for auto-detect")
+        ip_label.set_mnemonic_widget(self.dcc_external_ip)
+        ip_hbox.pack_start(self.dcc_external_ip, True, True, 0)
+
+        box.pack_start(ip_hbox, False, False, 0)
+
+        box.pack_start(Gtk.Separator(), False, False, 6)
+
+        # Section: Accessibility
+        label = Gtk.Label(label="<b>Accessibility</b>")
+        label.set_use_markup(True)
+        label.set_halign(Gtk.Align.START)
+        box.pack_start(label, False, False, 0)
+
+        # Announce transfers checkbox
+        self.dcc_announce = Gtk.CheckButton.new_with_mnemonic(
+            "A_nnounce DCC transfer events to screen reader"
+        )
+        box.pack_start(self.dcc_announce, False, False, 0)
+
+        # Info label
+        info = Gtk.Label()
+        info.set_markup(
+            "<i>DCC allows direct file transfers between users.\n"
+            "Configure port range if you have firewall restrictions.</i>"
+        )
+        info.set_line_wrap(True)
+        info.set_halign(Gtk.Align.START)
+        box.pack_start(info, False, False, 6)
+
+        return box
+
+    def on_dcc_auto_accept_toggled(self, widget) -> None:
+        """Handle auto-accept checkbox toggle with security warning"""
+        if widget.get_active():
+            # Show security warning dialog
+            dialog = Gtk.MessageDialog(
+                transient_for=self,
+                modal=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK_CANCEL,
+                text="Security Warning"
+            )
+            dialog.format_secondary_text(
+                "Enabling auto-accept will automatically download files from anyone "
+                "who sends you a DCC transfer request. This could be a security risk "
+                "as malicious files could be downloaded without your knowledge.\n\n"
+                "Are you sure you want to enable auto-accept?"
+            )
+
+            response = dialog.run()
+            dialog.destroy()
+
+            if response != Gtk.ResponseType.OK:
+                # User cancelled - uncheck the box
+                widget.set_active(False)
+
+    def on_browse_dcc_directory(self, widget) -> None:
+        """Browse for DCC download directory"""
+        dialog = Gtk.FileChooserDialog(
+            title="Choose Download Directory",
+            parent=self,
+            action=Gtk.FileChooserAction.SELECT_FOLDER
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
+        )
+
+        # Set current folder if one is already configured
+        current_dir = self.dcc_download_entry.get_text().strip()
+        if current_dir and os.path.exists(current_dir):
+            dialog.set_current_folder(current_dir)
+
+        response = dialog.run()
+
+        if response == Gtk.ResponseType.OK:
+            dirname = dialog.get_filename()
+            self.dcc_download_entry.set_text(dirname)
+
+        dialog.destroy()
+
     def _load_preferences(self) -> None:
         """Load current preferences"""
 
@@ -330,6 +497,19 @@ class PreferencesDialog(Gtk.Dialog):
         # Logging settings
         self.log_directory_entry.set_text(self.config.get_log_directory())
 
+        # DCC settings
+        dcc_config = self.config.get_dcc_config()
+        # Block signal to avoid triggering warning dialog on load
+        self.dcc_auto_accept.handler_block_by_func(self.on_dcc_auto_accept_toggled)
+        self.dcc_auto_accept.set_active(dcc_config.get("auto_accept", False))
+        self.dcc_auto_accept.handler_unblock_by_func(self.on_dcc_auto_accept_toggled)
+        self.dcc_download_entry.set_text(dcc_config.get("download_directory", ""))
+        port_start, port_end = self.config.get_dcc_port_range()
+        self.dcc_port_start.set_value(port_start)
+        self.dcc_port_end.set_value(port_end)
+        self.dcc_external_ip.set_text(dcc_config.get("external_ip", ""))
+        self.dcc_announce.set_active(dcc_config.get("announce_transfers", True))
+
     def _save_preferences(self) -> None:
         """Save preferences"""
 
@@ -347,7 +527,9 @@ class PreferencesDialog(Gtk.Dialog):
             "notice": self.sound_entries["notice"].get_text(),
             "join": self.sound_entries["join"].get_text(),
             "part": self.sound_entries["part"].get_text(),
-            "quit": self.sound_entries["quit"].get_text()
+            "quit": self.sound_entries["quit"].get_text(),
+            "dcc_receive_complete": self.sound_entries["dcc_receive_complete"].get_text(),
+            "dcc_send_complete": self.sound_entries["dcc_send_complete"].get_text()
         })
 
         # Accessibility settings
@@ -400,6 +582,16 @@ class PreferencesDialog(Gtk.Dialog):
                 error_dialog.format_secondary_text(str(e))
                 error_dialog.run()
                 error_dialog.destroy()
+
+        # DCC settings
+        self.config.set("dcc", {
+            "auto_accept": self.dcc_auto_accept.get_active(),
+            "download_directory": self.dcc_download_entry.get_text().strip(),
+            "port_range_start": int(self.dcc_port_start.get_value()),
+            "port_range_end": int(self.dcc_port_end.get_value()),
+            "external_ip": self.dcc_external_ip.get_text().strip(),
+            "announce_transfers": self.dcc_announce.get_active()
+        })
 
         # Save config file
         self.config.save_config()

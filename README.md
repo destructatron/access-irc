@@ -18,18 +18,19 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 ### IRC Functionality
 - Multi-server support with autoconnect option
 - Channel and private message management
-- Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/list`, `/quit`, `/raw`, `/exec`
+- Common IRC commands: `/join`, `/part`, `/msg`, `/query`, `/nick`, `/topic`, `/whois`, `/kick`, `/mode`, `/away`, `/invite`, `/me`, `/list`, `/quit`, `/raw`, `/exec`, `/dcc`
 - **Channel list browser**: Search and browse available channels with pagination
 - User lists with mode prefixes (@, +, %, ~, &)
 - Tab completion for usernames in channels (press Tab to cycle through matches)
 - CTCP ACTION and NOTICE support
+- **DCC file transfers**: Send and receive files directly between users
 - SSL/TLS with self-signed certificate support
 - IRC bouncer compatibility (ZNC, etc.)
 - **Conversation logging**: Per-server logging with date-based rotation
 - **Plugin system**: Extend functionality with custom Python scripts (pluggy-based)
 
 ### Notifications
-- GStreamer-based sound notifications for mentions, messages, joins, parts, and notices
+- GStreamer-based sound notifications for mentions, messages, joins, parts, notices, and DCC transfers
 - Persistent JSON configuration
 - Customizable sound files
 
@@ -144,6 +145,14 @@ Configuration is stored in `config.json` in your current directory (auto-created
   },
   "logging": {
     "log_directory": ""
+  },
+  "dcc": {
+    "auto_accept": false,
+    "download_directory": "",
+    "port_range_start": 1024,
+    "port_range_end": 65535,
+    "external_ip": "",
+    "announce_transfers": true
   }
 }
 ```
@@ -219,6 +228,7 @@ Note that this only affects in-memory display. If logging is enabled, all messag
 - `/away [message]` - Set away status
 - `/invite <nick> [channel]` - Invite user to channel
 - `/me <action>` - Send CTCP ACTION
+- `/dcc send <nick> [file]` - Send file via DCC (opens file chooser if no file specified)
 - `/list` - Open channel list browser (see below)
 - `/raw <command>` - Send raw IRC command
 - `/quit [message]` - Disconnect and quit
@@ -245,6 +255,39 @@ The `/list` command opens a dialog to browse and join channels on the current se
 - Pagination buttons announce the visible range to screen readers
 - Channels display in a table with Channel, Users, and Topic columns
 - Status shows current range (e.g., "Showing 1-100 of 500 channels")
+
+### DCC File Transfers
+
+Access IRC supports DCC (Direct Client-to-Client) file transfers, allowing you to send and receive files directly with other users.
+
+**Sending Files:**
+- Right-click a user in the channel list and select "DCC Send..."
+- Or use the command: `/dcc send <nickname> [filepath]`
+- If no filepath is provided, a file chooser dialog opens
+
+**Receiving Files:**
+- When someone sends you a file, a dialog appears asking to accept or reject
+- Accepted files are saved to your configured download directory
+- **Important**: You must set a download directory before receiving files. If not configured, incoming transfers are automatically rejected with a warning dialog
+- Enable "Auto-accept" in preferences to skip the confirmation dialog (use with caution)
+
+**Configuration (Settings → Preferences → DCC tab):**
+- **Auto-accept**: Automatically accept incoming transfers (security warning shown when enabling)
+- **Download directory**: Where received files are saved
+- **Port range**: Ports used for DCC connections (useful for firewall configuration)
+- **External IP**: Your public IP address (required if behind NAT)
+- **Announce transfers**: Enable screen reader announcements for transfer events
+
+**Network Requirements:**
+- DCC requires direct TCP connections between users
+- If behind NAT/firewall, you may need to:
+  - Forward the configured port range to your computer
+  - Set your external (public) IP address in preferences
+- The sender listens on a port; the receiver connects to it
+
+**Accessibility:**
+- Transfer completion and failures are announced to screen readers (if enabled)
+- Dedicated sounds for send/receive completion (configurable in Sounds tab)
 
 ### Plugin System
 
@@ -322,6 +365,7 @@ Access IRC uses a manager-based architecture:
 - `access_irc/config_manager.py` - JSON configuration
 - `access_irc/sound_manager.py` - GStreamer audio notifications
 - `access_irc/log_manager.py` - Conversation logging to disk
+- `access_irc/dcc_manager.py` - DCC file transfer protocol
 - `access_irc/plugin_manager.py` - Plugin discovery and hook execution
 - `access_irc/plugin_specs.py` - Plugin hook specifications
 - `access_irc/server_dialog.py` - Server management UI

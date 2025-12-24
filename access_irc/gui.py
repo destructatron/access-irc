@@ -1922,6 +1922,27 @@ class AccessibleIRCWindow(Gtk.Window):
         elif cmd == "/quit":
             self.on_quit(None)
 
+        elif cmd == "/dcc":
+            # /dcc send <nickname> [filename] - Send file via DCC
+            dcc_parts = args.split(None, 2) if args else []
+            if len(dcc_parts) >= 1 and dcc_parts[0].lower() == "send":
+                if len(dcc_parts) >= 2:
+                    nick = dcc_parts[1].lstrip('@+%~&')
+                    filename = dcc_parts[2] if len(dcc_parts) > 2 else None
+
+                    if filename:
+                        # Filename provided, initiate send
+                        self._initiate_dcc_send(nick, filename)
+                    else:
+                        # No filename, open file chooser
+                        self._open_dcc_file_chooser(nick)
+                else:
+                    self.add_system_message(self.current_server, self.current_target,
+                                           "Usage: /dcc send <nickname> [filename]")
+            else:
+                self.add_system_message(self.current_server, self.current_target,
+                                       "Usage: /dcc send <nickname> [filename]")
+
         elif cmd == "/exec":
             # /exec [-o] <command> - Execute shell command
             # -o: send output to current channel/PM instead of displaying locally
@@ -2243,6 +2264,11 @@ class AccessibleIRCWindow(Gtk.Window):
         whois_item.connect("activate", self.on_user_whois, username)
         menu.append(whois_item)
 
+        # DCC Send option
+        dcc_item = Gtk.MenuItem.new_with_mnemonic("_DCC Send...")
+        dcc_item.connect("activate", self.on_user_dcc_send, username)
+        menu.append(dcc_item)
+
         menu.show_all()
 
         # Handle both event objects and plain timestamps
@@ -2319,6 +2345,79 @@ class AccessibleIRCWindow(Gtk.Window):
                 connection.irc.quote(f"WHOIS {nick}")
                 self.add_system_message(self.current_server, self.current_target,
                                        f"Sent WHOIS query for {nick}")
+
+    def on_user_dcc_send(self, widget, username: str) -> None:
+        """
+        Open file chooser for DCC send to user
+
+        Args:
+            username: Username to send file to
+        """
+        # Strip mode prefixes
+        username = username.lstrip('@+%~&')
+        self._open_dcc_file_chooser(username)
+
+    def _open_dcc_file_chooser(self, nick: str) -> None:
+        """Open file chooser for DCC send"""
+        dialog = Gtk.FileChooserDialog(
+            title=f"Send file to {nick}",
+            parent=self,
+            action=Gtk.FileChooserAction.OPEN
+        )
+        dialog.add_buttons(
+            Gtk.STOCK_CANCEL, Gtk.ResponseType.CANCEL,
+            Gtk.STOCK_OPEN, Gtk.ResponseType.OK
+        )
+
+        response = dialog.run()
+
+        if response == Gtk.ResponseType.OK:
+            filename = dialog.get_filename()
+            self._initiate_dcc_send(nick, filename)
+
+        dialog.destroy()
+
+    def _initiate_dcc_send(self, nick: str, filepath: str) -> None:
+        """Initiate DCC send to user"""
+        import os
+
+        if not self.current_server:
+            self.add_system_message(None, None, "Not connected to any server")
+            return
+
+        if not os.path.exists(filepath):
+            self.add_system_message(self.current_server, self.current_target,
+                                   f"File not found: {filepath}")
+            return
+
+        if hasattr(self, 'dcc_manager') and self.dcc_manager:
+            def send_ctcp(server, target, msg):
+                if self.irc_manager:
+                    self.irc_manager.send_ctcp(server, target, msg)
+
+            transfer_id = self.dcc_manager.initiate_send(
+                self.current_server, nick, filepath, send_ctcp
+            )
+
+            if transfer_id:
+                filename = os.path.basename(filepath)
+                self.add_system_message(self.current_server, self.current_target,
+                                       f"Sending DCC SEND offer to {nick} for {filename}")
+            else:
+                self.add_system_message(self.current_server, self.current_target,
+                                       "Failed to initiate DCC send")
+        else:
+            self.add_system_message(self.current_server, self.current_target,
+                                   "DCC manager not initialized")
+
+    def set_dcc_manager(self, dcc_manager) -> None:
+        """
+        Set the DCC manager reference
+
+        Args:
+            dcc_manager: DCCManager instance
+        """
+        self.dcc_manager = dcc_manager
 
     def on_quit(self, widget) -> None:
         """Quit application"""

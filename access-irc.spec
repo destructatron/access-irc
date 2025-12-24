@@ -33,6 +33,7 @@ a = Analysis(
         'access_irc.sound_manager',
         'access_irc.irc_manager',
         'access_irc.log_manager',
+        'access_irc.dcc_manager',
         'access_irc.plugin_manager',
         'access_irc.plugin_specs',
         'access_irc.gui',

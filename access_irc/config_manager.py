@@ -8,7 +8,7 @@ import json
 import os
 import shutil
 from pathlib import Path
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Tuple
 
 
 class ConfigManager:
@@ -30,7 +30,9 @@ class ConfigManager:
             "notice": "/usr/share/access-irc/sounds/notice.wav",
             "join": "/usr/share/access-irc/sounds/join.wav",
             "part": "/usr/share/access-irc/sounds/part.wav",
-            "quit": "/usr/share/access-irc/sounds/quit.wav"
+            "quit": "/usr/share/access-irc/sounds/quit.wav",
+            "dcc_receive_complete": "/usr/share/access-irc/sounds/dcc_receive_complete.wav",
+            "dcc_send_complete": "/usr/share/access-irc/sounds/dcc_send_complete.wav"
         },
         "ui": {
             "show_timestamps": True,
@@ -41,6 +43,14 @@ class ConfigManager:
         },
         "logging": {
             "log_directory": ""
+        },
+        "dcc": {
+            "auto_accept": False,
+            "download_directory": "",
+            "port_range_start": 1024,
+            "port_range_end": 65535,
+            "external_ip": "",
+            "announce_transfers": True
         }
     }
 
@@ -188,7 +198,8 @@ class ConfigManager:
         Returns:
             Config with resolved sound paths
         """
-        sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit"]
+        sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit",
+                       "dcc_receive_complete", "dcc_send_complete"]
 
         if "sounds" not in config:
             config["sounds"] = {}
@@ -436,6 +447,69 @@ class ConfigManager:
         if "ui" not in self.config:
             self.config["ui"] = {}
         self.config["ui"]["scrollback_limit"] = limit
+        self.save_config()
+
+    # DCC configuration methods
+
+    def get_dcc_config(self) -> Dict[str, Any]:
+        """Get DCC configuration section"""
+        return self.config.get("dcc", self.DEFAULT_CONFIG["dcc"].copy())
+
+    def get_dcc_auto_accept(self) -> bool:
+        """Check if DCC auto-accept is enabled"""
+        return self.config.get("dcc", {}).get("auto_accept", False)
+
+    def set_dcc_auto_accept(self, enabled: bool) -> None:
+        """Set DCC auto-accept setting"""
+        if "dcc" not in self.config:
+            self.config["dcc"] = {}
+        self.config["dcc"]["auto_accept"] = enabled
+        self.save_config()
+
+    def get_dcc_download_directory(self) -> str:
+        """Get DCC download directory"""
+        return self.config.get("dcc", {}).get("download_directory", "")
+
+    def set_dcc_download_directory(self, directory: str) -> None:
+        """Set DCC download directory"""
+        if "dcc" not in self.config:
+            self.config["dcc"] = {}
+        self.config["dcc"]["download_directory"] = directory
+        self.save_config()
+
+    def get_dcc_port_range(self) -> Tuple[int, int]:
+        """Get DCC port range (start, end)"""
+        dcc = self.config.get("dcc", {})
+        return (dcc.get("port_range_start", 1024), dcc.get("port_range_end", 65535))
+
+    def set_dcc_port_range(self, start: int, end: int) -> None:
+        """Set DCC port range"""
+        if "dcc" not in self.config:
+            self.config["dcc"] = {}
+        self.config["dcc"]["port_range_start"] = start
+        self.config["dcc"]["port_range_end"] = end
+        self.save_config()
+
+    def get_dcc_external_ip(self) -> str:
+        """Get DCC external IP address for NAT"""
+        return self.config.get("dcc", {}).get("external_ip", "")
+
+    def set_dcc_external_ip(self, ip: str) -> None:
+        """Set DCC external IP address"""
+        if "dcc" not in self.config:
+            self.config["dcc"] = {}
+        self.config["dcc"]["external_ip"] = ip
+        self.save_config()
+
+    def should_announce_dcc_transfers(self) -> bool:
+        """Check if DCC transfers should be announced to screen reader"""
+        return self.config.get("dcc", {}).get("announce_transfers", True)
+
+    def set_dcc_announce_transfers(self, enabled: bool) -> None:
+        """Set whether DCC transfers should be announced"""
+        if "dcc" not in self.config:
+            self.config["dcc"] = {}
+        self.config["dcc"]["announce_transfers"] = enabled
         self.save_config()
 
 

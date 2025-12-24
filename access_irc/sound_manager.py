@@ -57,7 +57,8 @@ class SoundManager:
         # Clear previous failures
         self.load_failures = []
 
-        sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit"]
+        sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit",
+                       "dcc_receive_complete", "dcc_send_complete"]
 
         for sound_type in sound_types:
             sound_path = self.config.get_sound_path(sound_type)
@@ -155,6 +156,14 @@ class SoundManager:
     def play_quit(self) -> None:
         """Play user quit sound"""
         self.play("quit")
+
+    def play_dcc_receive_complete(self) -> None:
+        """Play DCC receive complete sound"""
+        self.play("dcc_receive_complete")
+
+    def play_dcc_send_complete(self) -> None:
+        """Play DCC send complete sound"""
+        self.play("dcc_send_complete")
 
     def reload_sounds(self) -> None:
         """Reload sound files (useful after config changes)"""

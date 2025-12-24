@@ -15,6 +15,7 @@ from .config_manager import ConfigManager
 from .sound_manager import SoundManager
 from .irc_manager import IRCManager
 from .log_manager import LogManager
+from .dcc_manager import DCCManager, DCCTransfer, DCCTransferDirection
 from .gui import AccessibleIRCWindow
 from .plugin_manager import PluginManager
 
@@ -48,14 +49,26 @@ class AccessIRCApplication:
             "on_names": self.on_irc_names,
             "on_kick": self.on_irc_kick,
             "on_server_message": self.on_irc_server_message,
-            "on_channel_list_ready": self.on_irc_channel_list_ready
+            "on_channel_list_ready": self.on_irc_channel_list_ready,
+            "on_ctcp_dcc": self.on_irc_ctcp_dcc
         }
 
         self.irc = IRCManager(self.config, callbacks)
 
+        # Create DCC callbacks
+        dcc_callbacks = {
+            "on_dcc_offer": self.on_dcc_offer,
+            "on_dcc_progress": self.on_dcc_progress,
+            "on_dcc_complete": self.on_dcc_complete,
+            "on_dcc_failed": self.on_dcc_failed
+        }
+
+        self.dcc = DCCManager(self.config, dcc_callbacks)
+
         # Create main window
         self.window = AccessibleIRCWindow("Access IRC")
         self.window.set_managers(self.irc, self.sound, self.config, self.log)
+        self.window.set_dcc_manager(self.dcc)
         self.window.connect("destroy", self.on_window_destroy)
 
         # Initialize plugin manager
@@ -535,10 +548,139 @@ class AccessIRCApplication:
         """
         self.window.show_channel_list_dialog(server, channels)
 
+    # DCC event handlers
+
+    def on_irc_ctcp_dcc(self, server: str, sender: str, message: str) -> None:
+        """Handle incoming DCC CTCP message"""
+        transfer = self.dcc.parse_dcc_ctcp(server, sender, message)
+        if transfer:
+            self.on_dcc_offer(transfer)
+
+    def on_dcc_offer(self, transfer: DCCTransfer) -> None:
+        """Handle incoming DCC offer"""
+        # Check if download directory is configured
+        download_dir = self.config.get_dcc_download_directory()
+        if not download_dir:
+            # Alert user to configure DCC settings
+            dialog = Gtk.MessageDialog(
+                transient_for=self.window,
+                modal=True,
+                message_type=Gtk.MessageType.WARNING,
+                buttons=Gtk.ButtonsType.OK,
+                text="DCC Download Directory Not Set"
+            )
+            dialog.format_secondary_text(
+                f"{transfer.nick} wants to send you a file:\n"
+                f"{transfer.filename} ({transfer.filesize:,} bytes)\n\n"
+                "Please set a download directory in Settings → Preferences → DCC "
+                "before receiving files."
+            )
+            dialog.run()
+            dialog.destroy()
+            self.dcc.reject_transfer(transfer.id)
+            self.window.add_system_message(
+                transfer.server, transfer.server,
+                f"Rejected DCC from {transfer.nick}: download directory not configured"
+            )
+            if self.config.should_announce_dcc_transfers():
+                self.window.announce_to_screen_reader(
+                    "File transfer rejected: download directory not configured"
+                )
+            return
+
+        # Check auto-accept setting
+        if self.config.get_dcc_auto_accept():
+            self.dcc.accept_transfer(transfer.id)
+            self.window.add_system_message(
+                transfer.server, transfer.server,
+                f"Auto-accepting DCC SEND from {transfer.nick}: {transfer.filename} ({transfer.filesize:,} bytes)"
+            )
+            if self.config.should_announce_dcc_transfers():
+                self.window.announce_to_screen_reader(
+                    f"Auto-accepting file transfer from {transfer.nick}: {transfer.filename}"
+                )
+        else:
+            # Show offer dialog
+            self._show_dcc_offer_dialog(transfer)
+
+    def _show_dcc_offer_dialog(self, transfer: DCCTransfer) -> None:
+        """Show dialog for incoming DCC offer"""
+        dialog = Gtk.MessageDialog(
+            transient_for=self.window,
+            modal=True,
+            message_type=Gtk.MessageType.QUESTION,
+            buttons=Gtk.ButtonsType.YES_NO,
+            text="DCC File Transfer Request"
+        )
+        dialog.format_secondary_text(
+            f"{transfer.nick} wants to send you a file:\n\n"
+            f"Filename: {transfer.filename}\n"
+            f"Size: {transfer.filesize:,} bytes\n\n"
+            f"Accept this transfer?"
+        )
+
+        response = dialog.run()
+        dialog.destroy()
+
+        if response == Gtk.ResponseType.YES:
+            self.dcc.accept_transfer(transfer.id)
+            self.window.add_system_message(
+                transfer.server, transfer.server,
+                f"Accepted DCC SEND from {transfer.nick}: {transfer.filename}"
+            )
+            if self.config.should_announce_dcc_transfers():
+                self.window.announce_to_screen_reader(
+                    f"Accepting file transfer from {transfer.nick}: {transfer.filename}"
+                )
+        else:
+            self.dcc.reject_transfer(transfer.id)
+            self.window.add_system_message(
+                transfer.server, transfer.server,
+                f"Rejected DCC SEND from {transfer.nick}: {transfer.filename}"
+            )
+
+    def on_dcc_progress(self, transfer: DCCTransfer) -> None:
+        """Handle DCC progress update"""
+        # Could update a progress indicator if we add one
+        pass
+
+    def on_dcc_complete(self, transfer: DCCTransfer) -> None:
+        """Handle DCC transfer completion"""
+        if transfer.direction == DCCTransferDirection.RECEIVE:
+            message = f"DCC receive complete: {transfer.filename} saved to {transfer.filepath}"
+            if self.sound:
+                self.sound.play_dcc_receive_complete()
+        else:
+            message = f"DCC send complete: {transfer.filename} to {transfer.nick}"
+            if self.sound:
+                self.sound.play_dcc_send_complete()
+
+        self.window.add_system_message(transfer.server, transfer.server, message)
+
+        # AT-SPI announcement
+        if self.config.should_announce_dcc_transfers():
+            self.window.announce_to_screen_reader(message)
+
+    def on_dcc_failed(self, transfer: DCCTransfer) -> None:
+        """Handle DCC transfer failure"""
+        if transfer.direction == DCCTransferDirection.RECEIVE:
+            message = f"DCC receive failed: {transfer.filename} - {transfer.error_message}"
+        else:
+            message = f"DCC send failed: {transfer.filename} to {transfer.nick} - {transfer.error_message}"
+
+        self.window.add_system_message(transfer.server, transfer.server, message)
+
+        # AT-SPI announcement
+        if self.config.should_announce_dcc_transfers():
+            self.window.announce_to_screen_reader(message)
+
     def on_window_destroy(self, widget) -> None:
         """Handle window destruction"""
         # Call plugin shutdown hooks
         self.plugins.call_shutdown()
+
+        # Cleanup DCC transfers
+        self.dcc.cleanup()
 
         # Disconnect all servers with configured quit message
         quit_message = self.config.get_quit_message()

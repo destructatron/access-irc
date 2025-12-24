@@ -254,25 +254,44 @@ class IRCConnection:
             # For PMs, use the sender's nickname as the target so we can track conversations
             channel = sender if is_private else target
 
-            # Check for CTCP ACTION (/me)
-            if message.startswith('\x01ACTION ') and message.endswith('\x01'):
-                # Extract action text
-                action = message[8:-1]  # Remove \x01ACTION and trailing \x01
-                # Strip IRC formatting codes from action
-                clean_action = strip_irc_formatting(action)
-                # Check if nickname is mentioned in the action (check both original and clean)
-                is_mention = self.nickname.lower() in action.lower() or self.nickname.lower() in clean_action.lower()
-                # Call on_action callback
-                GLib.idle_add(
-                    self._call_callback,
-                    "on_action",
-                    self.server_name,
-                    channel,
-                    sender,
-                    clean_action,
-                    is_mention,
-                    is_private
-                )
+            # Check for CTCP messages (start and end with \x01)
+            if message.startswith('\x01') and message.endswith('\x01'):
+                ctcp_content = message[1:-1]  # Remove \x01 wrappers
+
+                # Check for DCC
+                if ctcp_content.upper().startswith("DCC "):
+                    # Route to DCC handler
+                    GLib.idle_add(
+                        self._call_callback,
+                        "on_ctcp_dcc",
+                        self.server_name,
+                        sender,
+                        ctcp_content
+                    )
+                    return  # Don't process as regular message
+
+                # Check for CTCP ACTION (/me)
+                if ctcp_content.startswith('ACTION '):
+                    # Extract action text
+                    action = ctcp_content[7:]  # Remove 'ACTION '
+                    # Strip IRC formatting codes from action
+                    clean_action = strip_irc_formatting(action)
+                    # Check if nickname is mentioned in the action (check both original and clean)
+                    is_mention = self.nickname.lower() in action.lower() or self.nickname.lower() in clean_action.lower()
+                    # Call on_action callback
+                    GLib.idle_add(
+                        self._call_callback,
+                        "on_action",
+                        self.server_name,
+                        channel,
+                        sender,
+                        clean_action,
+                        is_mention,
+                        is_private
+                    )
+                    return  # Don't process as regular message
+
+            # Regular message (not CTCP)
             else:
                 # Regular message
                 # Strip IRC formatting codes from message
@@ -819,6 +838,20 @@ class IRCConnection:
 
         return sent_chunks
 
+    def send_ctcp(self, target: str, message: str) -> None:
+        """
+        Send a CTCP message
+
+        Args:
+            target: Target nickname
+            message: CTCP message content (without \\x01 wrappers)
+        """
+        if self.irc and self.connected:
+            try:
+                self.irc.msg(target, f"\x01{message}\x01")
+            except Exception as e:
+                print(f"Failed to send CTCP to {target}: {e}")
+
     def join_channel(self, channel: str) -> None:
         """
         Join a channel
@@ -1054,6 +1087,21 @@ class IRCManager:
         else:
             print(f"Not connected to {server_name}")
             return []
+
+    def send_ctcp(self, server_name: str, target: str, message: str) -> None:
+        """
+        Send a CTCP message
+
+        Args:
+            server_name: Name of server
+            target: Target nickname
+            message: CTCP message content (without \\x01 wrappers)
+        """
+        connection = self.connections.get(server_name)
+        if connection:
+            connection.send_ctcp(target, message)
+        else:
+            print(f"Not connected to {server_name}")
 
     def join_channel(self, server_name: str, channel: str) -> None:
         """
