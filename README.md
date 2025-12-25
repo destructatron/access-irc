@@ -45,7 +45,7 @@ sudo apt install python3 python3-pip python3-venv \
   libgirepository1.0-dev libgirepository-2.0-dev gcc libcairo2-dev pkg-config \
   gir1.2-gtk-3.0 at-spi2-core \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  libenchant-2-2 hunspell aspell libvoikko1
+  libenchant-2-2 hunspell hunspell-en-us aspell libvoikko1
 ```
 
 **Note:** Older systems may not have `libgirepository-2.0-dev` available - you can omit it if apt reports it as not found. Newer systems (Ubuntu 24.04+, Debian 13+) require it.
@@ -55,7 +55,7 @@ sudo apt install python3 python3-pip python3-venv \
 sudo dnf install python3 python3-devel python3-pip \
   gobject-introspection-devel cairo-devel pkg-config gtk3 at-spi2-core gcc \
   gstreamer1-plugins-base gstreamer1-plugins-good \
-  enchant2-devel hunspell aspell libvoikko nuspell
+  enchant2-devel hunspell hunspell-en-US aspell libvoikko nuspell
 ```
 
 **Arch Linux:**
@@ -63,7 +63,7 @@ sudo dnf install python3 python3-devel python3-pip \
 sudo pacman -S python python-pip \
   gobject-introspection cairo pkgconf gtk3 at-spi2-core base-devel \
   gst-plugins-base gst-plugins-good python-gobject \
-  enchant hunspell hspell aspell libvoikko nuspell
+  enchant hunspell hunspell-en_us hspell aspell libvoikko nuspell
 ```
 
 **Gentoo:**
@@ -71,8 +71,10 @@ sudo pacman -S python python-pip \
 sudo emerge -av dev-libs/gobject-introspection x11-libs/gtk+ \
   app-accessibility/at-spi2-core dev-util/pkgconfig \
   media-libs/gst-plugins-base media-libs/gst-plugins-good dev-python/pygobject \
-  app-text/enchant app-text/hunspell app-text/aspell dev-libs/libvoikko app-text/nuspell
+  app-text/enchant app-text/hunspell app-dicts/myspell-en app-text/aspell dev-libs/libvoikko app-text/nuspell
 ```
+
+**Note on spell checking:** The `hunspell-en-us` (or equivalent) package provides the actual English dictionary files. Without dictionary packages, spell checking will fail with errors about missing tables or dictionaries. Install additional language dictionaries as needed (e.g., `hunspell-de` for German, `hunspell-fr` for French).
 
 ### Application Setup
 
@@ -404,6 +406,12 @@ This allows you to make changes to the code without reinstalling the package.
 - Try toggling SSL on/off
 - For self-signed certificates, set `verify_ssl: false` in server config
 - Check firewall settings
+
+**Spell checking errors (tables/dictionary not found):**
+- Ensure hunspell dictionary packages are installed (e.g., `hunspell-en-us` on Debian/Ubuntu)
+- Verify libenchant is installed: `python3 -c "import enchant; print(enchant.list_languages())"`
+- If no languages are listed, install dictionary packages for your language
+- For other languages, install the appropriate hunspell dictionary (e.g., `hunspell-de` for German)
 
 ## Contributing
 
