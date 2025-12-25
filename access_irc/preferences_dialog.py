@@ -206,7 +206,7 @@ class PreferencesDialog(Gtk.Dialog):
 
         box.pack_start(Gtk.Separator(), False, False, 6)
 
-        # Sound file paths
+        # Sound file paths with individual enable checkboxes
         grid = Gtk.Grid()
         grid.set_row_spacing(6)
         grid.set_column_spacing(12)
@@ -214,41 +214,57 @@ class PreferencesDialog(Gtk.Dialog):
 
         row = 0
 
-        # Sound types
+        # Sound types with human-readable labels for checkboxes
         self.sound_entries = {}
-        for sound_type, label_text in [
-            ("mention", "_Mention sound:"),
-            ("message", "M_essage sound:"),
-            ("privmsg", "_Private message sound:"),
-            ("notice", "_Notice sound:"),
-            ("join", "_Join sound:"),
-            ("part", "_Part sound:"),
-            ("quit", "_Quit sound:"),
-            ("dcc_receive_complete", "DCC _receive complete:"),
-            ("dcc_send_complete", "DCC _send complete:")
+        self.sound_checkboxes = {}
+        self.sound_path_boxes = {}  # Store hboxes for showing/hiding
+        for sound_type, checkbox_label, entry_label in [
+            ("mention", "_Mention sound", "Path:"),
+            ("message", "M_essage sound", "Path:"),
+            ("privmsg", "_Private message sound", "Path:"),
+            ("notice", "_Notice sound", "Path:"),
+            ("join", "_Join sound", "Path:"),
+            ("part", "Part _sound", "Path:"),
+            ("quit", "_Quit sound", "Path:"),
+            ("dcc_receive_complete", "DCC _receive complete", "Path:"),
+            ("dcc_send_complete", "DCC sen_d complete", "Path:")
         ]:
-            label = Gtk.Label.new_with_mnemonic(label_text)
-            label.set_halign(Gtk.Align.END)
+            # Checkbox to enable/disable this sound
+            checkbox = Gtk.CheckButton.new_with_mnemonic(checkbox_label)
+            checkbox.connect("toggled", self._on_sound_checkbox_toggled, sound_type)
+            grid.attach(checkbox, 0, row, 2, 1)
+            self.sound_checkboxes[sound_type] = checkbox
+            row += 1
 
-            hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            # Path entry and browse button (in a box for easy show/hide)
+            path_hbox = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=6)
+            path_hbox.set_margin_start(24)  # Indent under checkbox
 
             entry = Gtk.Entry()
             entry.set_hexpand(True)
-            label.set_mnemonic_widget(entry)
 
             browse_btn = Gtk.Button(label="Browse...")
             browse_btn.connect("clicked", self.on_browse_sound, entry)
 
-            hbox.pack_start(entry, True, True, 0)
-            hbox.pack_start(browse_btn, False, False, 0)
+            path_hbox.pack_start(entry, True, True, 0)
+            path_hbox.pack_start(browse_btn, False, False, 0)
 
-            grid.attach(label, 0, row, 1, 1)
-            grid.attach(hbox, 1, row, 1, 1)
+            grid.attach(path_hbox, 0, row, 2, 1)
 
             self.sound_entries[sound_type] = entry
+            self.sound_path_boxes[sound_type] = path_hbox
             row += 1
 
         return box
+
+    def _on_sound_checkbox_toggled(self, checkbox: Gtk.CheckButton, sound_type: str) -> None:
+        """Handle individual sound checkbox toggle - show/hide path entry"""
+        path_box = self.sound_path_boxes.get(sound_type)
+        if path_box:
+            if checkbox.get_active():
+                path_box.show_all()
+            else:
+                path_box.hide()
 
     def _create_accessibility_tab(self) -> Gtk.Box:
         """Create accessibility settings tab"""
@@ -480,6 +496,18 @@ class PreferencesDialog(Gtk.Dialog):
             if path:
                 entry.set_text(path)
 
+            # Load enabled state for each sound type
+            checkbox = self.sound_checkboxes.get(sound_type)
+            path_box = self.sound_path_boxes.get(sound_type)
+            if checkbox and path_box:
+                is_enabled = self.config.is_sound_type_enabled(sound_type)
+                checkbox.set_active(is_enabled)
+                # Show/hide path box based on enabled state
+                if is_enabled:
+                    path_box.show_all()
+                else:
+                    path_box.hide()
+
         # Accessibility settings
         if self.config.should_announce_all_messages():
             self.announce_all.set_active(True)
@@ -518,18 +546,27 @@ class PreferencesDialog(Gtk.Dialog):
         self.config.set_realname(self.realname_entry.get_text().strip())
         self.config.set_quit_message(self.quit_message_entry.get_text().strip())
 
-        # Sound settings
+        # Sound settings - include both paths and enabled flags
         self.config.set("sounds", {
             "enabled": self.sounds_enabled.get_active(),
             "mention": self.sound_entries["mention"].get_text(),
+            "mention_enabled": self.sound_checkboxes["mention"].get_active(),
             "message": self.sound_entries["message"].get_text(),
+            "message_enabled": self.sound_checkboxes["message"].get_active(),
             "privmsg": self.sound_entries["privmsg"].get_text(),
+            "privmsg_enabled": self.sound_checkboxes["privmsg"].get_active(),
             "notice": self.sound_entries["notice"].get_text(),
+            "notice_enabled": self.sound_checkboxes["notice"].get_active(),
             "join": self.sound_entries["join"].get_text(),
+            "join_enabled": self.sound_checkboxes["join"].get_active(),
             "part": self.sound_entries["part"].get_text(),
+            "part_enabled": self.sound_checkboxes["part"].get_active(),
             "quit": self.sound_entries["quit"].get_text(),
+            "quit_enabled": self.sound_checkboxes["quit"].get_active(),
             "dcc_receive_complete": self.sound_entries["dcc_receive_complete"].get_text(),
-            "dcc_send_complete": self.sound_entries["dcc_send_complete"].get_text()
+            "dcc_receive_complete_enabled": self.sound_checkboxes["dcc_receive_complete"].get_active(),
+            "dcc_send_complete": self.sound_entries["dcc_send_complete"].get_text(),
+            "dcc_send_complete_enabled": self.sound_checkboxes["dcc_send_complete"].get_active()
         })
 
         # Accessibility settings

@@ -25,14 +25,23 @@ class ConfigManager:
         "sounds": {
             "enabled": True,
             "mention": "/usr/share/access-irc/sounds/mention.wav",
+            "mention_enabled": True,
             "message": "/usr/share/access-irc/sounds/message.wav",
+            "message_enabled": True,
             "privmsg": "/usr/share/access-irc/sounds/privmsg.wav",
+            "privmsg_enabled": True,
             "notice": "/usr/share/access-irc/sounds/notice.wav",
+            "notice_enabled": True,
             "join": "/usr/share/access-irc/sounds/join.wav",
+            "join_enabled": True,
             "part": "/usr/share/access-irc/sounds/part.wav",
+            "part_enabled": True,
             "quit": "/usr/share/access-irc/sounds/quit.wav",
+            "quit_enabled": True,
             "dcc_receive_complete": "/usr/share/access-irc/sounds/dcc_receive_complete.wav",
-            "dcc_send_complete": "/usr/share/access-irc/sounds/dcc_send_complete.wav"
+            "dcc_receive_complete_enabled": True,
+            "dcc_send_complete": "/usr/share/access-irc/sounds/dcc_send_complete.wav",
+            "dcc_send_complete_enabled": True
         },
         "ui": {
             "show_timestamps": True,
@@ -400,6 +409,20 @@ class ConfigManager:
         """
         sounds = self.config.get("sounds", {})
         return sounds.get(sound_type)
+
+    def is_sound_type_enabled(self, sound_type: str) -> bool:
+        """
+        Check if a specific sound type is enabled
+
+        Args:
+            sound_type: Type of sound (mention, message, privmsg, notice, join, part, quit, etc.)
+
+        Returns:
+            True if this sound type is enabled, False otherwise
+        """
+        sounds = self.config.get("sounds", {})
+        # Default to True for backwards compatibility
+        return sounds.get(f"{sound_type}_enabled", True)
 
     def should_announce_all_messages(self) -> bool:
         """Check if all messages should be announced"""

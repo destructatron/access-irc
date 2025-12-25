@@ -50,7 +50,7 @@ class SoundManager:
             self.initialized = False
 
     def _load_sounds(self) -> None:
-        """Load all configured sound files"""
+        """Load all configured sound files (only loads enabled sounds)"""
         if not self.initialized:
             return
 
@@ -61,6 +61,12 @@ class SoundManager:
                        "dcc_receive_complete", "dcc_send_complete"]
 
         for sound_type in sound_types:
+            # Skip loading if this sound type is disabled
+            if not self.config.is_sound_type_enabled(sound_type):
+                self.sounds[sound_type] = None
+                self.players[sound_type] = None
+                continue
+
             sound_path = self.config.get_sound_path(sound_type)
             if sound_path and os.path.exists(sound_path):
                 try:
@@ -103,7 +109,7 @@ class SoundManager:
             else:
                 self.sounds[sound_type] = None
                 self.players[sound_type] = None
-                # Sound file not found or not configured
+                # Sound file not found or not configured - only report if enabled
                 if sound_path:
                     self.load_failures.append(f"{sound_type}: File not found - {sound_path}")
                 else:
@@ -117,6 +123,10 @@ class SoundManager:
             sound_type: Type of sound to play (mention, message, privmsg, notice, join, part, quit)
         """
         if not self.initialized or not self.config.are_sounds_enabled():
+            return
+
+        # Check if this specific sound type is enabled
+        if not self.config.is_sound_type_enabled(sound_type):
             return
 
         player = self.players.get(sound_type)
