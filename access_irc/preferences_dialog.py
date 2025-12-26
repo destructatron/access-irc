@@ -226,6 +226,7 @@ class PreferencesDialog(Gtk.Dialog):
             ("join", "_Join sound", "Path:"),
             ("part", "Part _sound", "Path:"),
             ("quit", "_Quit sound", "Path:"),
+            ("invite", "_Invite sound", "Path:"),
             ("dcc_receive_complete", "DCC _receive complete", "Path:"),
             ("dcc_send_complete", "DCC sen_d complete", "Path:")
         ]:
@@ -563,6 +564,8 @@ class PreferencesDialog(Gtk.Dialog):
             "part_enabled": self.sound_checkboxes["part"].get_active(),
             "quit": self.sound_entries["quit"].get_text(),
             "quit_enabled": self.sound_checkboxes["quit"].get_active(),
+            "invite": self.sound_entries["invite"].get_text(),
+            "invite_enabled": self.sound_checkboxes["invite"].get_active(),
             "dcc_receive_complete": self.sound_entries["dcc_receive_complete"].get_text(),
             "dcc_receive_complete_enabled": self.sound_checkboxes["dcc_receive_complete"].get_active(),
             "dcc_send_complete": self.sound_entries["dcc_send_complete"].get_text(),

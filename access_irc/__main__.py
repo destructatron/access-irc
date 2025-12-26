@@ -50,7 +50,8 @@ class AccessIRCApplication:
             "on_kick": self.on_irc_kick,
             "on_server_message": self.on_irc_server_message,
             "on_channel_list_ready": self.on_irc_channel_list_ready,
-            "on_ctcp_dcc": self.on_irc_ctcp_dcc
+            "on_ctcp_dcc": self.on_irc_ctcp_dcc,
+            "on_invite": self.on_irc_invite
         }
 
         self.irc = IRCManager(self.config, callbacks)
@@ -537,6 +538,23 @@ class AccessIRCApplication:
         target = self.window.current_target if self.window.current_server == server else server
         # Announce server messages to screen readers since they're important information
         self.window.add_system_message(server, target, message, announce=True)
+
+    def on_irc_invite(self, server: str, inviter: str, channel: str) -> None:
+        """
+        Handle channel invite
+
+        Args:
+            server: Server name
+            inviter: Nick of user who sent the invite
+            channel: Channel we were invited to
+        """
+        message = f"{inviter} has invited you to join {channel}"
+        # Display in the current view for this server
+        target = self.window.current_target if self.window.current_server == server else server
+        self.window.add_system_message(server, target, message, announce=True)
+
+        # Play invite sound
+        self.sound.play_invite()
 
     def on_irc_channel_list_ready(self, server: str, channels: list) -> None:
         """

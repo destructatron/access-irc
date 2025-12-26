@@ -41,7 +41,9 @@ class ConfigManager:
             "dcc_receive_complete": "/usr/share/access-irc/sounds/dcc_receive_complete.wav",
             "dcc_receive_complete_enabled": True,
             "dcc_send_complete": "/usr/share/access-irc/sounds/dcc_send_complete.wav",
-            "dcc_send_complete_enabled": True
+            "dcc_send_complete_enabled": True,
+            "invite": "/usr/share/access-irc/sounds/invite.wav",
+            "invite_enabled": True
         },
         "ui": {
             "show_timestamps": True,
@@ -208,7 +210,7 @@ class ConfigManager:
             Config with resolved sound paths
         """
         sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit",
-                       "dcc_receive_complete", "dcc_send_complete"]
+                       "dcc_receive_complete", "dcc_send_complete", "invite"]
 
         if "sounds" not in config:
             config["sounds"] = {}

@@ -650,6 +650,35 @@ class IRCConnection:
                 self.channel_list.copy()
             )
 
+        def on_channel_error(irc, hostmask, args):
+            """Handle channel join errors (471, 473, 474, 475, 477)"""
+            # args format: [our_nick, channel, :reason]
+            if len(args) >= 2:
+                channel = args[1]
+                reason = args[2] if len(args) >= 3 else "Cannot join channel"
+                message = f"Cannot join {channel}: {reason}"
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_server_message",
+                    self.server_name,
+                    message
+                )
+
+        def on_invite(irc, hostmask, args):
+            """Handle INVITE messages"""
+            # hostmask format: (nick, user, host)
+            # args format: [our_nick, channel]
+            if len(args) >= 2:
+                inviter = hostmask[0] if hostmask else "Someone"
+                channel = args[1]
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_invite",
+                    self.server_name,
+                    inviter,
+                    channel
+                )
+
         # Register handlers with IRC instance
         self.irc.Handler("001", colon=False)(on_connect)  # RPL_WELCOME
         self.irc.Handler("PRIVMSG", colon=False)(on_message)
@@ -661,6 +690,7 @@ class IRCConnection:
         self.irc.Handler("353", colon=False)(on_names_reply)  # RPL_NAMREPLY
         self.irc.Handler("366", colon=False)(on_endofnames)  # RPL_ENDOFNAMES
         self.irc.Handler("KICK", colon=False)(on_kick)
+        self.irc.Handler("INVITE", colon=False)(on_invite)
 
         # WHOIS reply handlers
         self.irc.Handler("311", colon=False)(on_whois_user)  # RPL_WHOISUSER
@@ -675,6 +705,13 @@ class IRCConnection:
         # Channel list handlers
         self.irc.Handler("322", colon=False)(on_list_entry)  # RPL_LIST
         self.irc.Handler("323", colon=False)(on_list_end)  # RPL_LISTEND
+
+        # Channel error handlers
+        self.irc.Handler("471", colon=False)(on_channel_error)  # ERR_CHANNELISFULL
+        self.irc.Handler("473", colon=False)(on_channel_error)  # ERR_INVITEONLYCHAN
+        self.irc.Handler("474", colon=False)(on_channel_error)  # ERR_BANNEDFROMCHAN
+        self.irc.Handler("475", colon=False)(on_channel_error)  # ERR_BADCHANNELKEY
+        self.irc.Handler("477", colon=False)(on_channel_error)  # ERR_NEEDREGGEDNICK
 
     def request_channel_list(self) -> bool:
         """

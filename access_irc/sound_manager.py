@@ -58,7 +58,7 @@ class SoundManager:
         self.load_failures = []
 
         sound_types = ["mention", "message", "privmsg", "notice", "join", "part", "quit",
-                       "dcc_receive_complete", "dcc_send_complete"]
+                       "dcc_receive_complete", "dcc_send_complete", "invite"]
 
         for sound_type in sound_types:
             # Skip loading if this sound type is disabled
@@ -174,6 +174,10 @@ class SoundManager:
     def play_dcc_send_complete(self) -> None:
         """Play DCC send complete sound"""
         self.play("dcc_send_complete")
+
+    def play_invite(self) -> None:
+        """Play channel invite sound"""
+        self.play("invite")
 
     def reload_sounds(self) -> None:
         """Reload sound files (useful after config changes)"""
