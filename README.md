@@ -45,7 +45,8 @@ sudo apt install python3 python3-pip python3-venv \
   libgirepository1.0-dev libgirepository-2.0-dev gcc libcairo2-dev pkg-config \
   gir1.2-gtk-3.0 at-spi2-core \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
-  libenchant-2-2 hunspell hunspell-en-us aspell libvoikko1
+  libenchant-2-2 hunspell hunspell-en-us aspell libvoikko1 \
+  python3-pluggy
 ```
 
 **Note:** Older systems may not have `libgirepository-2.0-dev` available - you can omit it if apt reports it as not found. Newer systems (Ubuntu 24.04+, Debian 13+) require it.
@@ -55,7 +56,8 @@ sudo apt install python3 python3-pip python3-venv \
 sudo dnf install python3 python3-devel python3-pip \
   gobject-introspection-devel cairo-devel pkg-config gtk3 at-spi2-core gcc \
   gstreamer1-plugins-base gstreamer1-plugins-good \
-  enchant2-devel hunspell hunspell-en-US aspell libvoikko nuspell
+  enchant2-devel hunspell hunspell-en-US aspell libvoikko nuspell \
+  python3-pluggy
 ```
 
 **Arch Linux:**
@@ -63,7 +65,8 @@ sudo dnf install python3 python3-devel python3-pip \
 sudo pacman -S python python-pip \
   gobject-introspection cairo pkgconf gtk3 at-spi2-core base-devel \
   gst-plugins-base gst-plugins-good python-gobject \
-  enchant hunspell hunspell-en_us hspell aspell libvoikko nuspell
+  enchant hunspell hunspell-en_us hspell aspell libvoikko nuspell \
+  python-pluggy
 ```
 
 **Gentoo:**
@@ -71,7 +74,8 @@ sudo pacman -S python python-pip \
 sudo emerge -av dev-libs/gobject-introspection x11-libs/gtk+ \
   app-accessibility/at-spi2-core dev-util/pkgconfig \
   media-libs/gst-plugins-base media-libs/gst-plugins-good dev-python/pygobject \
-  app-text/enchant app-text/hunspell app-dicts/myspell-en app-text/aspell dev-libs/libvoikko app-text/nuspell
+  app-text/enchant app-text/hunspell app-dicts/myspell-en app-text/aspell dev-libs/libvoikko app-text/nuspell \
+  dev-python/pluggy
 ```
 
 **Note on spell checking:** The `hunspell-en-us` (or equivalent) package provides the actual English dictionary files. Without dictionary packages, spell checking will fail with errors about missing tables or dictionaries. Install additional language dictionaries as needed (e.g., `hunspell-de` for German, `hunspell-fr` for French).
@@ -375,6 +379,38 @@ Access IRC uses a manager-based architecture:
 
 See `CLAUDE.md` for detailed development documentation.
 
+### For Distribution Packagers
+
+When packaging Access IRC for a Linux distribution, the following information is useful:
+
+**Sound File Locations:**
+
+The application searches for sound files in the following order:
+
+1. **System location** (preferred for distro packages): `/usr/share/access-irc/sounds/`
+2. **PyInstaller bundle**: `<bundle>/access_irc/data/sounds/`
+3. **Development/source directory**: `<module_dir>/data/sounds/`
+
+Sound files should be named: `mention.wav`, `message.wav`, `privmsg.wav`, `notice.wav`, `join.wav`, `part.wav`, `quit.wav`, `dcc_receive_complete.wav`, `dcc_send_complete.wav`, `invite.wav`
+
+For system-wide installation, place sound files in `/usr/share/access-irc/sounds/`.
+
+**Default Configuration:**
+
+The example config file can be installed to `/usr/share/access-irc/config.json.example`. The application checks this location when creating a new user config.
+
+**Python Dependencies:**
+
+These Python packages must be available system-wide (not just via pip):
+- `pluggy` - Plugin system framework
+- `miniirc` - IRC protocol library (may need to be packaged if not available)
+
+**User Data Locations:**
+
+- Config file: `./config.json` (current directory) or user-specified path
+- Plugins: `~/.config/access-irc/plugins/`
+- Logs: User-configured directory (stored in config)
+
 ### Development Installation
 
 For development, install in editable mode:
@@ -389,7 +425,9 @@ This allows you to make changes to the code without reinstalling the package.
 
 **No sound:**
 - Verify GStreamer is working: `python3 -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst"`
-- Check that sound files exist in `sounds/` directory
+- Check that sound files exist in one of the search locations (see "For Distribution Packagers" section):
+  - System: `/usr/share/access-irc/sounds/`
+  - Development: `access_irc/data/sounds/`
 - Enable sounds in Settings → Preferences → Sounds
 
 **Screen reader announcements not working:**
