@@ -13,6 +13,7 @@ from typing import Optional, Dict, Tuple
 from datetime import datetime
 import subprocess
 import locale
+import types
 
 # Try to import pygtkspellcheck for spell checking (uses PANGO_UNDERLINE_ERROR for accessibility)
 try:
@@ -407,6 +408,8 @@ class AccessibleIRCWindow(Gtk.Window):
                 # Create spell checker attached to the text view
                 # pygtkspellcheck automatically handles right-click context menu
                 self._spell_checker = SpellChecker(self.message_entry, language=spell_language)
+                self.message_entry.connect("notify::buffer", self._on_message_entry_buffer_changed)
+                self._patch_spellchecker_suggestions(self._spell_checker)
             except Exception as e:
                 print(f"Warning: Failed to enable spell checking: {e}")
 
@@ -1319,6 +1322,74 @@ class AccessibleIRCWindow(Gtk.Window):
             return True
 
         return False
+
+    def _on_message_entry_buffer_changed(self, widget, _pspec) -> None:
+        """Rebind spellchecker if the input buffer changes."""
+        if not hasattr(self, "_spell_checker") or not self._spell_checker:
+            return
+
+        try:
+            current_buffer = widget.get_buffer()
+            if getattr(self._spell_checker, "_buffer", None) is current_buffer:
+                return
+            self._spell_checker.buffer_initialize()
+        except Exception as e:
+            print(f"Warning: Failed to rebind spell checker buffer: {e}")
+
+    def _patch_spellchecker_suggestions(self, spell_checker) -> None:
+        """Work around GTK3 suggestion menu replacement bug in pygtkspellcheck."""
+        try:
+            from gtkspellcheck import spellcheck as sc
+        except Exception as e:
+            print(f"Warning: Failed to patch spell checker suggestions: {e}")
+            return
+
+        if not getattr(sc, "_IS_GTK3", True):
+            return
+
+        def _suggestion_menu_fixed(self_sc, word):
+            menu = []
+            suggestions = self_sc._dictionary.suggest(word)
+            if not suggestions:
+                item = Gtk.MenuItem.new()
+                label = Gtk.Label.new("")
+                try:
+                    label.set_halign(Gtk.Align.LEFT)
+                except AttributeError:
+                    label.set_alignment(0.0, 0.5)
+                label.set_markup("<i>{text}</i>".format(text=sc._("(no suggestions)")))
+                item.add(label)
+                menu.append(item)
+            else:
+                for suggestion in suggestions:
+                    item = Gtk.MenuItem.new()
+                    label = Gtk.Label.new("")
+                    label.set_markup("<b>{text}</b>".format(text=suggestion))
+                    try:
+                        label.set_halign(Gtk.Align.LEFT)
+                    except AttributeError:
+                        label.set_alignment(0.0, 0.5)
+                    item.add(label)
+
+                    def _make_on_activate(replacement):
+                        return lambda *args: self_sc._replace_word(replacement)
+
+                    item.connect("activate", _make_on_activate(suggestion))
+                    menu.append(item)
+
+            add_to_dict_menu_label = sc._("Add to Dictionary")
+            menu.append(Gtk.SeparatorMenuItem.new())
+            item = Gtk.MenuItem.new_with_label(add_to_dict_menu_label)
+            item.connect("activate", lambda *args: self_sc.add_to_dictionary(word))
+            menu.append(item)
+
+            ignore_menu_label = sc._("Ignore All")
+            item = Gtk.MenuItem.new_with_label(ignore_menu_label)
+            item.connect("activate", lambda *args: self_sc.ignore_all(word))
+            menu.append(item)
+            return menu
+
+        spell_checker._suggestion_menu = types.MethodType(_suggestion_menu_fixed, spell_checker)
 
     def _get_flat_tree_items(self) -> list:
         """
