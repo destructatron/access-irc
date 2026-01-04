@@ -395,6 +395,24 @@ class ServerEditDialog(Gtk.Dialog):
         grid.attach(self.channels_entry, 1, row, 1, 1)
         row += 1
 
+        # Auto-connect commands
+        label = Gtk.Label.new_with_mnemonic("Auto-connect _commands (one per line):")
+        label.set_halign(Gtk.Align.END)
+        auto_commands_scrolled = Gtk.ScrolledWindow()
+        auto_commands_scrolled.set_policy(Gtk.PolicyType.AUTOMATIC, Gtk.PolicyType.AUTOMATIC)
+        auto_commands_scrolled.set_size_request(-1, 90)
+        self.auto_commands_buffer = Gtk.TextBuffer()
+        self.auto_commands_view = Gtk.TextView(buffer=self.auto_commands_buffer)
+        self.auto_commands_view.set_wrap_mode(Gtk.WrapMode.WORD_CHAR)
+        self.auto_commands_view.set_tooltip_text(
+            "Commands sent after connecting (use raw IRC commands, one per line)."
+        )
+        label.set_mnemonic_widget(self.auto_commands_view)
+        auto_commands_scrolled.add(self.auto_commands_view)
+        grid.attach(label, 0, row, 1, 1)
+        grid.attach(auto_commands_scrolled, 1, row, 1, 1)
+        row += 1
+
         # Separator
         separator = Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL)
         grid.attach(separator, 0, row, 2, 1)
@@ -465,6 +483,13 @@ class ServerEditDialog(Gtk.Dialog):
         self.password_entry.set_text(self.server.get("password", ""))
         self.sasl_check.set_active(self.server.get("sasl", False))
 
+        auto_commands = self.server.get("auto_connect_commands", [])
+        if isinstance(auto_commands, str):
+            auto_commands = [line.strip() for line in auto_commands.splitlines() if line.strip()]
+        else:
+            auto_commands = [str(cmd).strip() for cmd in auto_commands if str(cmd).strip()]
+        self.auto_commands_buffer.set_text("\n".join(auto_commands))
+
     def validate(self) -> Optional[str]:
         """
         Validate form fields
@@ -504,6 +529,15 @@ class ServerEditDialog(Gtk.Dialog):
         # Ensure channels start with #
         channels = [ch if ch.startswith("#") else f"#{ch}" for ch in channels]
 
+        auto_commands_text = self.auto_commands_buffer.get_text(
+            self.auto_commands_buffer.get_start_iter(),
+            self.auto_commands_buffer.get_end_iter(),
+            True
+        )
+        auto_connect_commands = [
+            line.strip() for line in auto_commands_text.splitlines() if line.strip()
+        ]
+
         return {
             "name": self.name_entry.get_text().strip(),
             "host": self.host_entry.get_text().strip(),
@@ -515,5 +549,6 @@ class ServerEditDialog(Gtk.Dialog):
             "channels": channels,
             "username": self.username_entry.get_text().strip(),
             "password": self.password_entry.get_text(),  # Don't strip password
-            "sasl": self.sasl_check.get_active()
+            "sasl": self.sasl_check.get_active(),
+            "auto_connect_commands": auto_connect_commands
         }

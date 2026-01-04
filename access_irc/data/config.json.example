@@ -15,6 +15,9 @@
         "#python",
         "#linux"
       ],
+      "auto_connect_commands": [
+        "MODE +i"
+      ],
       "username": "",
       "password": "",
       "sasl": false
@@ -28,6 +31,7 @@
       "autoconnect": false,
       "logging_enabled": false,
       "channels": [],
+      "auto_connect_commands": [],
       "username": "myuser/libera",
       "password": "mypassword",
       "sasl": false

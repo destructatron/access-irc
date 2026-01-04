@@ -82,6 +82,9 @@ class IRCConnection:
         self.username = server_config.get("username", "")
         self.password = server_config.get("password", "")
         self.use_sasl = server_config.get("sasl", False)
+        self.auto_connect_commands = self._normalize_auto_commands(
+            server_config.get("auto_connect_commands", [])
+        )
 
         self.callbacks = callbacks
         self.irc: Optional[miniirc.IRC] = None
@@ -240,6 +243,7 @@ class IRCConnection:
         def on_connect(irc, hostmask, args):
             """Handle successful connection"""
             self.connected = True
+            self._run_auto_connect_commands()
             GLib.idle_add(self._call_callback, "on_connect", self.server_name)
 
         def on_message(irc, hostmask, args):
@@ -712,6 +716,115 @@ class IRCConnection:
         self.irc.Handler("474", colon=False)(on_channel_error)  # ERR_BANNEDFROMCHAN
         self.irc.Handler("475", colon=False)(on_channel_error)  # ERR_BADCHANNELKEY
         self.irc.Handler("477", colon=False)(on_channel_error)  # ERR_NEEDREGGEDNICK
+
+    @staticmethod
+    def _normalize_auto_commands(raw_commands: Any) -> List[str]:
+        """
+        Normalize auto-connect command configuration into a clean list.
+
+        Args:
+            raw_commands: Config value (list or string)
+
+        Returns:
+            List of non-empty command strings
+        """
+        if raw_commands is None:
+            return []
+
+        if isinstance(raw_commands, str):
+            commands = raw_commands.splitlines()
+        elif isinstance(raw_commands, list):
+            commands = raw_commands
+        else:
+            commands = [str(raw_commands)]
+
+        normalized = []
+        for command in commands:
+            if command is None:
+                continue
+            text = str(command).strip()
+            if not text:
+                continue
+            normalized.append(text)
+
+        return normalized
+
+    def _run_auto_connect_commands(self) -> None:
+        """Send configured commands after a successful connection."""
+        if not self.irc or not self.connected:
+            return
+
+        for command in self.auto_connect_commands:
+            self._send_auto_connect_command(command)
+
+    def _send_auto_connect_command(self, command: str) -> None:
+        """Send a single auto-connect command, supporting common slash commands."""
+        if not self.irc:
+            return
+
+        raw = command.strip()
+        if not raw:
+            return
+
+        if not raw.startswith("/"):
+            try:
+                self.irc.quote(raw)
+            except Exception as e:
+                print(f"Failed to send auto-connect command on {self.server_name}: {e}")
+            return
+
+        parts = raw[1:].split(None, 1)
+        cmd = parts[0].lower()
+        args = parts[1] if len(parts) > 1 else ""
+
+        try:
+            if cmd in ("msg", "query"):
+                msg_parts = args.split(None, 1)
+                if len(msg_parts) >= 2:
+                    target = msg_parts[0].lstrip("@+%~&")
+                    message = msg_parts[1]
+                    self.send_message(target, message)
+                else:
+                    print(f"Auto-connect /{cmd} missing target or message on {self.server_name}")
+            elif cmd in ("raw", "quote"):
+                if args:
+                    self.irc.quote(args)
+            elif cmd == "nick" and args:
+                self.irc.quote(f"NICK {args}")
+            elif cmd == "mode" and args:
+                self.irc.quote(f"MODE {args}")
+            elif cmd == "join" and args:
+                self.irc.quote(f"JOIN {args}")
+            elif cmd in ("part", "leave") and args:
+                self.irc.quote(f"PART {args}")
+            elif cmd == "away":
+                if args:
+                    self.irc.quote(f"AWAY :{args}")
+                else:
+                    self.irc.quote("AWAY")
+            elif cmd == "whois" and args:
+                self.irc.quote(f"WHOIS {args}")
+            elif cmd == "invite" and args:
+                invite_parts = args.split(None, 1)
+                if len(invite_parts) >= 2:
+                    nick = invite_parts[0].lstrip("@+%~&")
+                    channel = invite_parts[1]
+                    self.irc.quote(f"INVITE {nick} {channel}")
+                else:
+                    print(f"Auto-connect /invite missing channel on {self.server_name}")
+            elif cmd == "topic" and args:
+                topic_parts = args.split(None, 1)
+                if len(topic_parts) >= 2:
+                    channel = topic_parts[0]
+                    topic = topic_parts[1]
+                    self.irc.quote(f"TOPIC {channel} :{topic}")
+                else:
+                    print(f"Auto-connect /topic missing channel or topic on {self.server_name}")
+            else:
+                # Fall back to sending the raw command without the slash.
+                self.irc.quote(raw[1:])
+        except Exception as e:
+            print(f"Failed to send auto-connect command on {self.server_name}: {e}")
 
     def request_channel_list(self) -> bool:
         """
