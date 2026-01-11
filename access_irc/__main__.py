@@ -10,6 +10,8 @@ from gi.repository import Gtk, GLib
 
 import sys
 import signal
+import time
+from datetime import datetime
 
 from .config_manager import ConfigManager
 from .sound_manager import SoundManager
@@ -51,7 +53,15 @@ class AccessIRCApplication:
             "on_server_message": self.on_irc_server_message,
             "on_channel_list_ready": self.on_irc_channel_list_ready,
             "on_ctcp_dcc": self.on_irc_ctcp_dcc,
-            "on_invite": self.on_irc_invite
+            "on_invite": self.on_irc_invite,
+            "on_topic_change": self.on_irc_topic_change,
+            "on_topic_reply": self.on_irc_topic_reply,
+            "on_no_topic": self.on_irc_no_topic,
+            "on_topic_setter": self.on_irc_topic_setter,
+            "on_mode_change": self.on_irc_mode_change,
+            "on_channel_mode": self.on_irc_channel_mode,
+            "on_user_mode": self.on_irc_user_mode,
+            "on_motd_line": self.on_irc_motd_line
         }
 
         self.irc = IRCManager(self.config, callbacks)
@@ -79,6 +89,9 @@ class AccessIRCApplication:
 
         # Handle Ctrl+C gracefully
         signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+        # Track recently displayed topics to avoid duplicate join output
+        self._recent_topics = {}  # (server, channel) -> (topic, timestamp)
 
     def run(self) -> int:
         """
@@ -555,6 +568,106 @@ class AccessIRCApplication:
 
         # Play invite sound
         self.sound.play_invite()
+
+    def on_irc_topic_reply(self, server: str, channel: str, topic: str) -> None:
+        """Handle current topic reply (shown on join)"""
+        key = (server, channel)
+        now = time.monotonic()
+        previous = self._recent_topics.get(key)
+        if previous and previous[0] == topic and now - previous[1] < 2.0:
+            return
+        self._recent_topics[key] = (topic, now)
+
+        message = f"Topic for {channel}: {topic}" if topic else f"Topic for {channel}:"
+        self.window.add_system_message(server, channel, message)
+
+        # Call plugin hook with unknown setter
+        self.plugins.call_topic(server, channel, topic, None)
+
+        if self.window.should_announce_all_messages(server, channel):
+            self.window.announce_to_screen_reader(message)
+
+    def on_irc_no_topic(self, server: str, channel: str) -> None:
+        """Handle no-topic reply"""
+        key = (server, channel)
+        now = time.monotonic()
+        previous = self._recent_topics.get(key)
+        if previous and previous[0] == "" and now - previous[1] < 2.0:
+            return
+        self._recent_topics[key] = ("", now)
+
+        message = f"No topic is set for {channel}"
+        self.window.add_system_message(server, channel, message)
+        if self.window.should_announce_all_messages(server, channel):
+            self.window.announce_to_screen_reader(message)
+
+    def on_irc_topic_setter(self, server: str, channel: str, setter: str, timestamp: str) -> None:
+        """Handle topic setter and time reply"""
+        formatted_time = None
+        try:
+            formatted_time = datetime.fromtimestamp(int(timestamp)).strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, OSError, OverflowError):
+            formatted_time = None
+
+        if formatted_time:
+            message = f"Topic set by {setter} at {formatted_time}"
+        else:
+            message = f"Topic set by {setter}"
+
+        self.window.add_system_message(server, channel, message)
+        if self.window.should_announce_all_messages(server, channel):
+            self.window.announce_to_screen_reader(message)
+
+    def on_irc_topic_change(self, server: str, channel: str, topic: str, setter: str) -> None:
+        """Handle topic changes"""
+        if topic:
+            message = f"{setter} changed the topic to: {topic}"
+        else:
+            message = f"{setter} cleared the topic"
+
+        self._recent_topics[(server, channel)] = (topic, time.monotonic())
+        self.window.add_system_message(server, channel, message)
+
+        # Call plugin hook
+        self.plugins.call_topic(server, channel, topic, setter)
+
+        if self.window.should_announce_all_messages(server, channel):
+            self.window.announce_to_screen_reader(message)
+
+    def on_irc_mode_change(self, server: str, target: str, modes: str, setter: str) -> None:
+        """Handle MODE changes"""
+        is_channel = target and target[0] in ("#", "&", "!", "+")
+        if is_channel:
+            message = f"Mode change by {setter}: {modes}"
+            self.window.add_system_message(server, target, message)
+            # Update users list if we're viewing this channel
+            if self.window.current_server == server and self.window.current_target == target:
+                self.window.update_users_list()
+        else:
+            message = f"Mode change for {target} by {setter}: {modes}"
+            self.window.add_system_message(server, server, message)
+
+        announce_target = target if is_channel else server
+        if self.window.should_announce_all_messages(server, announce_target):
+            self.window.announce_to_screen_reader(message)
+
+    def on_irc_channel_mode(self, server: str, channel: str, modes: str) -> None:
+        """Handle channel mode replies"""
+        message = f"Channel modes for {channel}: {modes}"
+        self.window.add_system_message(server, channel, message)
+        if self.window.should_announce_all_messages(server, channel):
+            self.window.announce_to_screen_reader(message)
+
+    def on_irc_user_mode(self, server: str, modes: str) -> None:
+        """Handle user mode replies"""
+        message = f"Your user modes: {modes}"
+        self.window.add_system_message(server, server, message)
+        if self.window.should_announce_all_messages(server, server):
+            self.window.announce_to_screen_reader(message)
+
+    def on_irc_motd_line(self, server: str, line: str) -> None:
+        """Handle MOTD lines"""
+        self.window.add_system_message(server, server, line)
 
     def on_irc_channel_list_ready(self, server: str, channels: list) -> None:
         """

@@ -56,6 +56,19 @@ def strip_irc_formatting(text: str) -> str:
 class IRCConnection:
     """Represents a single IRC server connection"""
 
+    # Prefix and mode handling for user list updates
+    USER_MODE_PREFIXES = {
+        "q": "~",
+        "a": "&",
+        "o": "@",
+        "h": "%",
+        "v": "+",
+    }
+    PREFIX_RANK = {"~": 5, "&": 4, "@": 3, "%": 2, "+": 1}
+    PREFIX_CHARS = set(PREFIX_RANK.keys())
+    MODE_PARAMS_ALWAYS = set("beI") | set(USER_MODE_PREFIXES.keys())
+    MODE_PARAMS_ON_SET = set("klfj")
+
     # IRC protocol limit is 512 bytes per message including CRLF
     # Reserve space for: hostmask prefix (~100), PRIVMSG command (8), target, colon-space (2), CRLF (2)
     IRC_MAX_LINE = 512
@@ -323,6 +336,12 @@ class IRCConnection:
             # Track our own channel joins
             if nick == self.nickname and channel not in self.current_channels:
                 self.current_channels.append(channel)
+                # Request topic explicitly (some bouncers don't send it on join)
+                if self.irc:
+                    try:
+                        self.irc.quote(f"TOPIC {channel}")
+                    except Exception as e:
+                        print(f"Failed to request topic for {channel}: {e}")
 
             # Add user to channel user list
             self.add_user_to_channel(channel, nick)
@@ -467,6 +486,12 @@ class IRCConnection:
                         channel,
                         self.nickname
                     )
+                    # Request topic explicitly (useful for bouncers that don't send it on join)
+                    if self.irc:
+                        try:
+                            self.irc.quote(f"TOPIC {channel}")
+                        except Exception as e:
+                            print(f"Failed to request topic for {channel}: {e}")
 
         def on_notice(irc, hostmask, args):
             """Handle NOTICE messages"""
@@ -683,6 +708,131 @@ class IRCConnection:
                     channel
                 )
 
+        def on_topic_change(irc, hostmask, args):
+            """Handle TOPIC changes"""
+            # args format: [channel, topic]
+            if len(args) >= 1:
+                channel = args[0]
+                topic = args[1] if len(args) >= 2 else ""
+                clean_topic = strip_irc_formatting(topic)
+                setter = hostmask[0] if hostmask else "Server"
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_topic_change",
+                    self.server_name,
+                    channel,
+                    clean_topic,
+                    setter
+                )
+
+        def on_topic_reply(irc, hostmask, args):
+            """Handle current topic reply (332)"""
+            # args format: [our_nick, channel, topic]
+            if len(args) >= 3:
+                channel = args[1]
+                topic = args[2]
+                clean_topic = strip_irc_formatting(topic)
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_topic_reply",
+                    self.server_name,
+                    channel,
+                    clean_topic
+                )
+
+        def on_no_topic(irc, hostmask, args):
+            """Handle no-topic reply (331)"""
+            # args format: [our_nick, channel, :No topic is set]
+            if len(args) >= 2:
+                channel = args[1]
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_no_topic",
+                    self.server_name,
+                    channel
+                )
+
+        def on_topic_setter(irc, hostmask, args):
+            """Handle topic setter reply (333)"""
+            # args format: [our_nick, channel, setter, timestamp]
+            if len(args) >= 4:
+                channel = args[1]
+                setter = args[2]
+                timestamp = args[3]
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_topic_setter",
+                    self.server_name,
+                    channel,
+                    setter,
+                    timestamp
+                )
+
+        def on_mode_change(irc, hostmask, args):
+            """Handle MODE changes"""
+            # args format: [target, modes, params...]
+            if len(args) >= 2:
+                target = args[0]
+                mode_str = args[1]
+                params = args[2:]
+                modes = " ".join(args[1:])
+                setter = hostmask[0] if hostmask else "Server"
+
+                # Update user prefixes for channel modes
+                if target and target[0] in ("#", "&", "!", "+"):
+                    self._apply_mode_changes(target, mode_str, params)
+
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_mode_change",
+                    self.server_name,
+                    target,
+                    modes,
+                    setter
+                )
+
+        def on_channel_mode(irc, hostmask, args):
+            """Handle channel mode reply (324)"""
+            # args format: [our_nick, channel, modes, params...]
+            if len(args) >= 3:
+                channel = args[1]
+                modes = " ".join(args[2:])
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_channel_mode",
+                    self.server_name,
+                    channel,
+                    modes
+                )
+
+        def on_user_mode(irc, hostmask, args):
+            """Handle user mode reply (221)"""
+            # args format: [our_nick, modes]
+            if len(args) >= 2:
+                modes = " ".join(args[1:])
+                GLib.idle_add(
+                    self._call_callback,
+                    "on_user_mode",
+                    self.server_name,
+                    modes
+                )
+
+        def on_motd_line(irc, hostmask, args):
+            """Handle MOTD lines and related responses"""
+            if len(args) >= 2:
+                line = " ".join(args[1:])
+            elif args:
+                line = args[0]
+            else:
+                return
+            line = strip_irc_formatting(line)
+            GLib.idle_add(
+                self._call_callback,
+                "on_motd_line",
+                self.server_name,
+                line
+            )
+
         # Register handlers with IRC instance
         self.irc.Handler("001", colon=False)(on_connect)  # RPL_WELCOME
         self.irc.Handler("PRIVMSG", colon=False)(on_message)
@@ -695,6 +845,8 @@ class IRCConnection:
         self.irc.Handler("366", colon=False)(on_endofnames)  # RPL_ENDOFNAMES
         self.irc.Handler("KICK", colon=False)(on_kick)
         self.irc.Handler("INVITE", colon=False)(on_invite)
+        self.irc.Handler("TOPIC", colon=False)(on_topic_change)
+        self.irc.Handler("MODE", colon=False)(on_mode_change)
 
         # WHOIS reply handlers
         self.irc.Handler("311", colon=False)(on_whois_user)  # RPL_WHOISUSER
@@ -716,6 +868,21 @@ class IRCConnection:
         self.irc.Handler("474", colon=False)(on_channel_error)  # ERR_BANNEDFROMCHAN
         self.irc.Handler("475", colon=False)(on_channel_error)  # ERR_BADCHANNELKEY
         self.irc.Handler("477", colon=False)(on_channel_error)  # ERR_NEEDREGGEDNICK
+
+        # Topic replies
+        self.irc.Handler("331", colon=False)(on_no_topic)  # RPL_NOTOPIC
+        self.irc.Handler("332", colon=False)(on_topic_reply)  # RPL_TOPIC
+        self.irc.Handler("333", colon=False)(on_topic_setter)  # RPL_TOPICWHOTIME
+
+        # Mode replies
+        self.irc.Handler("324", colon=False)(on_channel_mode)  # RPL_CHANNELMODEIS
+        self.irc.Handler("221", colon=False)(on_user_mode)  # RPL_UMODEIS
+
+        # MOTD replies
+        self.irc.Handler("375", colon=False)(on_motd_line)  # RPL_MOTDSTART
+        self.irc.Handler("372", colon=False)(on_motd_line)  # RPL_MOTD
+        self.irc.Handler("376", colon=False)(on_motd_line)  # RPL_ENDOFMOTD
+        self.irc.Handler("422", colon=False)(on_motd_line)  # ERR_NOMOTD
 
     @staticmethod
     def _normalize_auto_commands(raw_commands: Any) -> List[str]:
@@ -1061,6 +1228,8 @@ class IRCConnection:
         """
         if channel not in self.channel_users:
             self.channel_users[channel] = set()
+        # Remove any existing entry for this nick (with or without prefix)
+        self._remove_user_variants(channel, nickname)
         self.channel_users[channel].add(nickname)
 
     def remove_user_from_channel(self, channel: str, nickname: str) -> None:
@@ -1072,7 +1241,7 @@ class IRCConnection:
             nickname: User nickname
         """
         if channel in self.channel_users:
-            self.channel_users[channel].discard(nickname)
+            self._remove_user_variants(channel, nickname)
 
     def remove_user_from_all_channels(self, nickname: str) -> None:
         """
@@ -1082,7 +1251,7 @@ class IRCConnection:
             nickname: User nickname
         """
         for channel in self.channel_users:
-            self.channel_users[channel].discard(nickname)
+            self._remove_user_variants(channel, nickname)
 
     def rename_user(self, old_nick: str, new_nick: str) -> None:
         """
@@ -1093,8 +1262,14 @@ class IRCConnection:
             new_nick: New nickname
         """
         for channel in self.channel_users:
-            if old_nick in self.channel_users[channel]:
-                self.channel_users[channel].discard(old_nick)
+            existing = self._find_user_entry(channel, old_nick)
+            if existing is None:
+                continue
+            prefix = self._get_prefix(existing)
+            self._remove_user_variants(channel, old_nick)
+            if prefix:
+                self.channel_users[channel].add(f"{prefix}{new_nick}")
+            else:
                 self.channel_users[channel].add(new_nick)
 
     def get_channel_users(self, channel: str) -> List[str]:
@@ -1120,6 +1295,122 @@ class IRCConnection:
         """
         if channel in self.channel_users:
             del self.channel_users[channel]
+
+    def _strip_prefix(self, nickname: str) -> str:
+        """Strip common IRC mode prefixes from a nickname."""
+        if not nickname:
+            return nickname
+        while nickname and nickname[0] in self.PREFIX_CHARS:
+            nickname = nickname[1:]
+        return nickname
+
+    def _get_prefix(self, nickname: str) -> str:
+        """Return the mode prefix for a nickname, if present."""
+        if nickname and nickname[0] in self.PREFIX_CHARS:
+            return nickname[0]
+        return ""
+
+    def _find_user_entry(self, channel: str, nickname: str) -> Optional[str]:
+        """Find a stored user entry for a nickname in a channel (with any prefix)."""
+        if channel not in self.channel_users:
+            return None
+        base = self._strip_prefix(nickname)
+        for entry in self.channel_users[channel]:
+            if self._strip_prefix(entry) == base:
+                return entry
+        return None
+
+    def _remove_user_variants(self, channel: str, nickname: str) -> Optional[str]:
+        """Remove any stored variants of a nickname (with or without prefix)."""
+        if channel not in self.channel_users:
+            return None
+        base = self._strip_prefix(nickname)
+        removed = None
+        for entry in list(self.channel_users[channel]):
+            if self._strip_prefix(entry) == base:
+                if removed is None:
+                    removed = entry
+                self.channel_users[channel].discard(entry)
+        return removed
+
+    def _pick_higher_prefix(self, current: str, new: str) -> str:
+        """Pick the higher-ranked prefix between current and new."""
+        if not current:
+            return new
+        if not new:
+            return current
+        return new if self.PREFIX_RANK.get(new, 0) > self.PREFIX_RANK.get(current, 0) else current
+
+    def _update_user_prefix(self, channel: str, nickname: str, mode: str, sign: str) -> bool:
+        """Update a user's displayed prefix based on mode changes."""
+        if channel not in self.channel_users:
+            return False
+
+        base = self._strip_prefix(nickname)
+        current_entry = self._find_user_entry(channel, base)
+        if current_entry is None and sign == "-":
+            return False
+
+        current_prefix = self._get_prefix(current_entry) if current_entry else ""
+        target_prefix = self.USER_MODE_PREFIXES.get(mode)
+        if not target_prefix:
+            return False
+
+        if sign == "+":
+            new_prefix = self._pick_higher_prefix(current_prefix, target_prefix)
+        else:
+            if current_prefix == target_prefix:
+                new_prefix = ""
+            else:
+                new_prefix = current_prefix
+
+        # Avoid needless churn
+        if current_entry:
+            existing_prefix = self._get_prefix(current_entry)
+            if existing_prefix == new_prefix and self._strip_prefix(current_entry) == base:
+                return False
+
+        self._remove_user_variants(channel, base)
+        display = f"{new_prefix}{base}" if new_prefix else base
+        self.channel_users[channel].add(display)
+        return True
+
+    def _parse_mode_changes(self, mode_str: str, params: List[str]) -> List[tuple]:
+        """Parse MODE changes into a list of (sign, mode, nick) for user modes."""
+        changes = []
+        sign = "+"
+        param_index = 0
+
+        for ch in mode_str:
+            if ch in "+-":
+                sign = ch
+                continue
+
+            needs_param = False
+            if ch in self.MODE_PARAMS_ALWAYS:
+                needs_param = True
+            elif ch in self.MODE_PARAMS_ON_SET and sign == "+":
+                needs_param = True
+
+            param = None
+            if needs_param:
+                if param_index >= len(params):
+                    break
+                param = params[param_index]
+                param_index += 1
+
+            if ch in self.USER_MODE_PREFIXES and param:
+                changes.append((sign, ch, param))
+
+        return changes
+
+    def _apply_mode_changes(self, channel: str, mode_str: str, params: List[str]) -> bool:
+        """Apply user prefix updates from MODE changes."""
+        changed = False
+        for sign, mode, nick in self._parse_mode_changes(mode_str, params):
+            if self._update_user_prefix(channel, nick, mode, sign):
+                changed = True
+        return changed
 
 
 class IRCManager:
