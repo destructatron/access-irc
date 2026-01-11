@@ -22,6 +22,8 @@
 ## Testing Guidelines
 - No automated test suite is currently present. Do manual smoke checks:
   - Launch the app, connect to a test IRC server, send/receive a message, and verify screen reader announcements and sounds.
+ - Pytest-based unit tests live in `tests/`. Run them with:
+   - `venv/bin/python -m pytest`
 
 ## Commit & Pull Request Guidelines
 - Commit messages in history are short, imperative, and sentence case (e.g., “Add DCC support”).
