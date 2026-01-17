@@ -51,3 +51,13 @@ def test_server_add_update_remove(tmp_path):
 
     assert manager.remove_server(index) is True
     assert len(manager.get_servers()) == initial_count
+
+
+def test_alternate_nicks_roundtrip(tmp_path):
+    config_path = tmp_path / "config.json"
+    manager = ConfigManager(str(config_path))
+
+    manager.set_alternate_nicks(["AltOne", "AltTwo", " ", "AltOne"])
+    reloaded = ConfigManager(str(config_path))
+
+    assert reloaded.get_alternate_nicks() == ["AltOne", "AltTwo"]

@@ -2,9 +2,11 @@ import access_irc.irc_manager as irc_manager
 
 
 class FakeIRC:
-    def __init__(self):
+    def __init__(self, nick="IRCUser"):
         self.handlers = {}
         self.quoted = []
+        self._desired_nick = nick
+        self._current_nick = nick
 
     def Handler(self, event, colon=False):
         def decorator(func):
@@ -16,12 +18,14 @@ class FakeIRC:
         self.quoted.append(command)
 
 
-def _make_connection():
+def _make_connection(overrides=None):
     config = {
         "name": "TestNet",
         "host": "irc.test",
         "channels": []
     }
+    if overrides:
+        config.update(overrides)
     return irc_manager.IRCConnection(config, {})
 
 
@@ -97,3 +101,50 @@ def test_topic_requested_on_endofnames(monkeypatch):
 
     assert "#bouncer" in connection.current_channels
     assert "TOPIC #bouncer" in fake.quoted
+
+
+def test_alternate_nick_retry_on_in_use():
+    connection = _make_connection({
+        "nickname": "Primary",
+        "alternate_nicks": ["AltOne", "AltTwo"]
+    })
+    fake = FakeIRC(connection.nickname)
+    connection.irc = fake
+
+    connection._handle_nick_error(
+        "433",
+        ["me", "Primary", "Nickname is already in use."]
+    )
+
+    assert connection.nickname == "AltOne"
+    assert fake._desired_nick == "AltOne"
+    assert fake._current_nick == "0AltOne"
+    assert fake.quoted == ["NICK AltOne"]
+
+    connection._handle_nick_error(
+        "433",
+        ["me", "AltOne", "Nickname is already in use."]
+    )
+
+    assert connection.nickname == "AltTwo"
+    assert fake._desired_nick == "AltTwo"
+    assert fake._current_nick == "0AltTwo"
+    assert fake.quoted == ["NICK AltOne", "NICK AltTwo"]
+
+
+def test_alternate_nick_not_used_when_connected():
+    connection = _make_connection({
+        "nickname": "Primary",
+        "alternate_nicks": ["AltOne"]
+    })
+    fake = FakeIRC(connection.nickname)
+    connection.irc = fake
+    connection.connected = True
+
+    connection._handle_nick_error(
+        "433",
+        ["me", "Primary", "Nickname is already in use."]
+    )
+
+    assert connection.nickname == "Primary"
+    assert fake.quoted == []

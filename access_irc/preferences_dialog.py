@@ -94,6 +94,19 @@ class PreferencesDialog(Gtk.Dialog):
         grid.attach(self.nickname_entry, 1, row, 1, 1)
         row += 1
 
+        # Alternate nicks
+        label = Gtk.Label.new_with_mnemonic("_Alternate nicks:")
+        label.set_halign(Gtk.Align.END)
+        self.alternate_nicks_entry = Gtk.Entry()
+        self.alternate_nicks_entry.set_placeholder_text("nick2, nick3")
+        self.alternate_nicks_entry.set_tooltip_text(
+            "Comma-separated fallbacks when your preferred nick is in use"
+        )
+        label.set_mnemonic_widget(self.alternate_nicks_entry)
+        grid.attach(label, 0, row, 1, 1)
+        grid.attach(self.alternate_nicks_entry, 1, row, 1, 1)
+        row += 1
+
         # Real name
         label = Gtk.Label.new_with_mnemonic("_Real name:")
         label.set_halign(Gtk.Align.END)
@@ -486,6 +499,9 @@ class PreferencesDialog(Gtk.Dialog):
 
         # User settings
         self.nickname_entry.set_text(self.config.get_nickname())
+        self.alternate_nicks_entry.set_text(
+            ", ".join(self.config.get_alternate_nicks())
+        )
         self.realname_entry.set_text(self.config.get_realname())
         self.quit_message_entry.set_text(self.config.get_quit_message())
 
@@ -544,6 +560,9 @@ class PreferencesDialog(Gtk.Dialog):
 
         # User settings
         self.config.set_nickname(self.nickname_entry.get_text().strip())
+        self.config.set_alternate_nicks(
+            self._parse_alternate_nicks(self.alternate_nicks_entry.get_text())
+        )
         self.config.set_realname(self.realname_entry.get_text().strip())
         self.config.set_quit_message(self.quit_message_entry.get_text().strip())
 
@@ -732,3 +751,19 @@ class PreferencesDialog(Gtk.Dialog):
             self.stop_emission_by_name("response")
         elif response_id == Gtk.ResponseType.OK:
             self.destroy()
+
+    def _parse_alternate_nicks(self, text: str) -> list:
+        """Parse comma-separated alternate nicknames into a unique list."""
+        primary = self.nickname_entry.get_text().strip().lower()
+        parts = [part.strip() for part in text.replace("\n", ",").split(",")]
+        deduped = []
+        seen = set()
+        for part in parts:
+            if not part:
+                continue
+            key = part.lower()
+            if key == primary or key in seen:
+                continue
+            seen.add(key)
+            deduped.append(part)
+        return deduped

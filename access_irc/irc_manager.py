@@ -89,6 +89,11 @@ class IRCConnection:
         self.verify_ssl = server_config.get("verify_ssl", True)
         self.channels = server_config.get("channels", [])
         self.nickname = server_config.get("nickname", "IRCUser")
+        self.base_nickname = self.nickname
+        self.alternate_nicks = self._normalize_alternate_nicks(
+            server_config.get("alternate_nicks", [])
+        )
+        self._alternate_nick_index = 0
         self.realname = server_config.get("realname", "Access IRC User")
 
         # Authentication
@@ -126,6 +131,19 @@ class IRCConnection:
         if callback:
             callback(*args)
         return False
+
+    def _report_server_message(self, message: str) -> None:
+        """Report a server message via callback."""
+        if not message:
+            return
+        callback = self.callbacks.get("on_server_message")
+        if callback:
+            GLib.idle_add(
+                self._call_callback,
+                "on_server_message",
+                self.server_name,
+                message
+            )
 
     def connect(self) -> bool:
         """
@@ -168,6 +186,9 @@ class IRCConnection:
                 server_password=server_password,
                 ns_identity=ns_identity
             )
+            if self.alternate_nicks:
+                # Disable miniirc's underscore fallback so we can use configured alternates.
+                self.irc._current_nick = f"0{self.nickname}"
 
             # Register handlers
             self._register_handlers()
@@ -255,6 +276,8 @@ class IRCConnection:
 
         def on_connect(irc, hostmask, args):
             """Handle successful connection"""
+            if args:
+                self.nickname = args[0]
             self.connected = True
             self._run_auto_connect_commands()
             GLib.idle_add(self._call_callback, "on_connect", self.server_name)
@@ -833,6 +856,12 @@ class IRCConnection:
                 line
             )
 
+        def make_nick_error_handler(code: str):
+            def handler(irc, hostmask, args):
+                """Handle nickname errors (in use, unavailable, invalid)."""
+                self._handle_nick_error(code, args)
+            return handler
+
         # Register handlers with IRC instance
         self.irc.Handler("001", colon=False)(on_connect)  # RPL_WELCOME
         self.irc.Handler("PRIVMSG", colon=False)(on_message)
@@ -868,6 +897,10 @@ class IRCConnection:
         self.irc.Handler("474", colon=False)(on_channel_error)  # ERR_BANNEDFROMCHAN
         self.irc.Handler("475", colon=False)(on_channel_error)  # ERR_BADCHANNELKEY
         self.irc.Handler("477", colon=False)(on_channel_error)  # ERR_NEEDREGGEDNICK
+        self.irc.Handler("432", colon=False)(make_nick_error_handler("432"))  # ERR_ERRONEUSNICKNAME
+        self.irc.Handler("433", colon=False)(make_nick_error_handler("433"))  # ERR_NICKNAMEINUSE
+        self.irc.Handler("436", colon=False)(make_nick_error_handler("436"))  # ERR_NICKCOLLISION
+        self.irc.Handler("437", colon=False)(make_nick_error_handler("437"))  # ERR_UNAVAILRESOURCE
 
         # Topic replies
         self.irc.Handler("331", colon=False)(on_no_topic)  # RPL_NOTOPIC
@@ -915,6 +948,91 @@ class IRCConnection:
             normalized.append(text)
 
         return normalized
+
+    def _normalize_alternate_nicks(self, raw_nicks: Any) -> List[str]:
+        """Normalize alternate nickname configuration into a clean list."""
+        if raw_nicks is None:
+            return []
+
+        if isinstance(raw_nicks, str):
+            candidates = [part.strip() for part in raw_nicks.replace("\n", ",").split(",")]
+        elif isinstance(raw_nicks, list):
+            candidates = []
+            for item in raw_nicks:
+                if item is None:
+                    continue
+                if isinstance(item, str):
+                    candidates.extend(
+                        [part.strip() for part in item.replace("\n", ",").split(",")]
+                    )
+                else:
+                    candidates.append(str(item).strip())
+        else:
+            candidates = [str(raw_nicks).strip()]
+
+        normalized = []
+        seen = set()
+        base_lower = (self.base_nickname or "").lower()
+        for nick in candidates:
+            if not nick:
+                continue
+            if nick.lower() == base_lower:
+                continue
+            key = nick.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append(nick)
+
+        return normalized
+
+    def _next_alternate_nick(self) -> Optional[str]:
+        """Return the next alternate nick to try, if any."""
+        while self._alternate_nick_index < len(self.alternate_nicks):
+            candidate = self.alternate_nicks[self._alternate_nick_index]
+            self._alternate_nick_index += 1
+            if candidate and candidate.lower() != self.nickname.lower():
+                return candidate
+        return None
+
+    def _handle_nick_error(self, code: str, args: List[str]) -> None:
+        """Handle nickname errors by retrying alternate nicknames if available."""
+        auto_retry = not self.connected
+        if auto_retry and not self.alternate_nicks and code in ("432", "433"):
+            return
+
+        attempted_nick = args[1] if len(args) >= 2 else self.nickname
+        attempted_nick = attempted_nick or self.nickname
+        reason = " ".join(args[2:]).strip() if len(args) > 2 else ""
+
+        next_nick = None
+        if auto_retry:
+            next_nick = self._next_alternate_nick()
+            if next_nick and self.irc:
+                self.nickname = next_nick
+                self.irc._desired_nick = next_nick
+                if self.alternate_nicks:
+                    self.irc._current_nick = f"0{next_nick}"
+                try:
+                    self.irc.quote(f"NICK {next_nick}")
+                except Exception as e:
+                    print(f"Failed to set alternate nick {next_nick}: {e}")
+                    next_nick = None
+
+        message = f"Nickname {attempted_nick} is unavailable."
+        if next_nick:
+            message += f" Trying {next_nick}."
+        else:
+            if auto_retry:
+                if self.alternate_nicks:
+                    message += " No alternative nicknames left."
+                else:
+                    message += " No alternative nicknames configured."
+            message += " Use /nick to choose another."
+        if reason:
+            message += f" Reason: {reason}"
+
+        self._report_server_message(message)
 
     def _run_auto_connect_commands(self) -> None:
         """Send configured commands after a successful connection."""
@@ -1451,6 +1569,8 @@ class IRCManager:
             server_config["nickname"] = self.config.get_nickname()
         if not server_config.get("realname"):
             server_config["realname"] = self.config.get_realname()
+        if "alternate_nicks" not in server_config or server_config.get("alternate_nicks") is None:
+            server_config["alternate_nicks"] = self.config.get_alternate_nicks()
 
         # Create connection
         connection = IRCConnection(server_config, self.callbacks)

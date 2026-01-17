@@ -19,6 +19,7 @@ class ConfigManager:
 
     DEFAULT_CONFIG = {
         "nickname": "IRCUser",
+        "alternate_nicks": [],
         "realname": "Access IRC User",
         "quit_message": "Access IRC - Leaving",
         "servers": [],
@@ -375,6 +376,36 @@ class ConfigManager:
     def set_nickname(self, nickname: str) -> None:
         """Set nickname and save"""
         self.config["nickname"] = nickname
+        self.save_config()
+
+    def get_alternate_nicks(self) -> List[str]:
+        """Get configured alternate nicknames"""
+        raw = self.config.get("alternate_nicks", [])
+        if raw is None:
+            return []
+        if isinstance(raw, list):
+            return raw
+        if isinstance(raw, str):
+            parts = [part.strip() for part in raw.replace("\n", ",").split(",")]
+            return [part for part in parts if part]
+        text = str(raw).strip()
+        return [text] if text else []
+
+    def set_alternate_nicks(self, alternate_nicks: List[str]) -> None:
+        """Set alternate nicknames and save"""
+        cleaned: List[str] = []
+        seen = set()
+        primary = self.get_nickname().strip().lower()
+        for nick in alternate_nicks:
+            text = str(nick).strip()
+            if not text:
+                continue
+            key = text.lower()
+            if key == primary or key in seen:
+                continue
+            seen.add(key)
+            cleaned.append(text)
+        self.config["alternate_nicks"] = cleaned
         self.save_config()
 
     def get_realname(self) -> str:
