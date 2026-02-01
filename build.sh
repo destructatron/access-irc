@@ -16,7 +16,8 @@ fi
 
 # Copy miniirc from venv to project directory (temporary for build)
 echo "Copying miniirc from venv..."
-cp venv/lib/python3.13/site-packages/miniirc.py . || {
+PYTHON_DIR=$(ls venv/lib/ | head -1)
+cp "venv/lib/${PYTHON_DIR}/site-packages/miniirc.py" . || {
     echo "Error: Could not find miniirc in venv"
     echo "Install it with: venv/bin/pip install miniirc"
     exit 1
