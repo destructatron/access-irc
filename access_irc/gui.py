@@ -2109,9 +2109,68 @@ class AccessibleIRCWindow(Gtk.Window):
                             line, announce=should_announce
                         )
 
+        elif cmd == "/ignore":
+            # /ignore [nick] - Ignore a user or show ignore list
+            if self.current_server and self.config_manager:
+                if args:
+                    nick = args.split()[0].lstrip('@+%~&')
+                    # Prevent ignoring yourself
+                    connection = self.irc_manager.connections.get(self.current_server) if self.irc_manager else None
+                    our_nick = connection.nickname if connection else self.config_manager.get_nickname()
+                    if nick.lower() == our_nick.lower():
+                        self.add_system_message(self.current_server, self.current_target,
+                                               "You cannot ignore yourself")
+                        return
+                    if self.config_manager.add_ignored_nick(self.current_server, nick):
+                        self.add_system_message(self.current_server, self.current_target,
+                                               f"Now ignoring {nick}",
+                                               announce=True)
+                    else:
+                        self.add_system_message(self.current_server, self.current_target,
+                                               f"{nick} is already ignored",
+                                               announce=True)
+                else:
+                    # No args - show ignore list
+                    self._show_ignore_list()
+
+        elif cmd == "/unignore":
+            # /unignore <nick> - Unignore a user
+            if self.current_server and self.config_manager:
+                if args:
+                    nick = args.split()[0].lstrip('@+%~&')
+                    if self.config_manager.remove_ignored_nick(self.current_server, nick):
+                        self.add_system_message(self.current_server, self.current_target,
+                                               f"No longer ignoring {nick}",
+                                               announce=True)
+                    else:
+                        self.add_system_message(self.current_server, self.current_target,
+                                               f"{nick} is not ignored",
+                                               announce=True)
+                else:
+                    self.add_system_message(self.current_server, self.current_target,
+                                           "Usage: /unignore <nick>")
+
+        elif cmd == "/ignorelist":
+            # /ignorelist - Show current ignore list
+            if self.current_server and self.config_manager:
+                self._show_ignore_list()
+
         else:
             self.add_system_message(self.current_server, self.current_target,
                                    f"Unknown command: {cmd}")
+
+    def _show_ignore_list(self) -> None:
+        """Show the ignore list for the current server"""
+        ignored = self.config_manager.get_ignored_nicks(self.current_server)
+        if ignored:
+            nick_list = ", ".join(sorted(ignored))
+            self.add_system_message(self.current_server, self.current_target,
+                                   f"Ignored users on {self.current_server}: {nick_list}",
+                                   announce=True)
+        else:
+            self.add_system_message(self.current_server, self.current_target,
+                                   f"No ignored users on {self.current_server}",
+                                   announce=True)
 
     def on_connect_server(self, widget) -> None:
         """Show connect to server dialog"""
@@ -2340,6 +2399,18 @@ class AccessibleIRCWindow(Gtk.Window):
         dcc_item.connect("activate", self.on_user_dcc_send, username)
         menu.append(dcc_item)
 
+        # Separator before ignore option
+        menu.append(Gtk.SeparatorMenuItem())
+
+        # Ignore/Unignore option
+        bare_nick = username.lstrip('@+%~&')
+        if self.config_manager and self.current_server and self.config_manager.is_nick_ignored(self.current_server, bare_nick):
+            ignore_item = Gtk.MenuItem.new_with_mnemonic("Un_ignore")
+        else:
+            ignore_item = Gtk.MenuItem.new_with_mnemonic("_Ignore")
+        ignore_item.connect("activate", self.on_user_toggle_ignore, username)
+        menu.append(ignore_item)
+
         menu.show_all()
 
         # Handle both event objects and plain timestamps
@@ -2427,6 +2498,23 @@ class AccessibleIRCWindow(Gtk.Window):
         # Strip mode prefixes
         username = username.lstrip('@+%~&')
         self._open_dcc_file_chooser(username)
+
+    def on_user_toggle_ignore(self, widget, username: str) -> None:
+        """Toggle ignore state for a user from the context menu"""
+        if not self.current_server or not self.config_manager:
+            return
+
+        nick = username.lstrip('@+%~&')
+        if self.config_manager.is_nick_ignored(self.current_server, nick):
+            self.config_manager.remove_ignored_nick(self.current_server, nick)
+            self.add_system_message(self.current_server, self.current_target,
+                                   f"No longer ignoring {nick}",
+                                   announce=True)
+        else:
+            self.config_manager.add_ignored_nick(self.current_server, nick)
+            self.add_system_message(self.current_server, self.current_target,
+                                   f"Now ignoring {nick}",
+                                   announce=True)
 
     def _open_dcc_file_chooser(self, nick: str) -> None:
         """Open file chooser for DCC send"""

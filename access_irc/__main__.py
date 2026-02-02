@@ -258,6 +258,10 @@ class AccessIRCApplication:
 
     def on_irc_message(self, server: str, channel: str, sender: str, message: str, is_mention: bool, is_private: bool) -> None:
         """Handle incoming IRC message"""
+        # Check ignore list
+        if self.config.is_nick_ignored(server, sender):
+            return
+
         # Apply plugin filter
         filter_result = self.plugins.filter_incoming_message(server, channel, sender, message)
         if filter_result:
@@ -291,6 +295,10 @@ class AccessIRCApplication:
 
     def on_irc_action(self, server: str, channel: str, sender: str, action: str, is_mention: bool, is_private: bool) -> None:
         """Handle incoming IRC action (/me)"""
+        # Check ignore list
+        if self.config.is_nick_ignored(server, sender):
+            return
+
         # Apply plugin filter
         filter_result = self.plugins.filter_incoming_action(server, channel, sender, action)
         if filter_result:
@@ -324,6 +332,10 @@ class AccessIRCApplication:
 
     def on_irc_notice(self, server: str, channel: str, sender: str, message: str) -> None:
         """Handle incoming IRC notice"""
+        # Check ignore list (skip server notices where sender contains a dot)
+        if "." not in sender and self.config.is_nick_ignored(server, sender):
+            return
+
         # Apply plugin filter
         filter_result = self.plugins.filter_incoming_notice(server, channel, sender, message)
         if filter_result:

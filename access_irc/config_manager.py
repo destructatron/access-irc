@@ -4,6 +4,7 @@ Configuration Manager for Access IRC
 Handles loading and saving configuration in JSON format
 """
 
+import copy
 import json
 import os
 import shutil
@@ -63,7 +64,8 @@ class ConfigManager:
             "port_range_end": 65535,
             "external_ip": "",
             "announce_transfers": True
-        }
+        },
+        "ignored_nicks": {}
     }
 
     def __init__(self, config_path: Optional[str] = None):
@@ -234,7 +236,7 @@ class ConfigManager:
         Returns:
             Merged configuration
         """
-        merged = self.DEFAULT_CONFIG.copy()
+        merged = copy.deepcopy(self.DEFAULT_CONFIG)
 
         # Update with user values
         for key in merged:
@@ -345,6 +347,15 @@ class ConfigManager:
         """
         servers = self.config.get("servers", [])
         if 0 <= index < len(servers):
+            old_name = servers[index].get("name")
+            new_name = server.get("name")
+
+            # Migrate ignored_nicks if server was renamed
+            if old_name and new_name and old_name != new_name:
+                ignored = self.config.get("ignored_nicks", {})
+                if old_name in ignored:
+                    ignored[new_name] = ignored.pop(old_name)
+
             servers[index] = server
             self.config["servers"] = servers
             self.save_config()
@@ -567,6 +578,50 @@ class ConfigManager:
             self.config["dcc"] = {}
         self.config["dcc"]["announce_transfers"] = enabled
         self.save_config()
+
+    # Ignore list methods
+
+    def get_ignored_nicks(self, server: str) -> List[str]:
+        """Get list of ignored nicks for a server"""
+        return self.config.get("ignored_nicks", {}).get(server, [])
+
+    def is_nick_ignored(self, server: str, nick: str) -> bool:
+        """Check if a nick is ignored on a server (case-insensitive)"""
+        ignored = self.get_ignored_nicks(server)
+        return nick.lower() in ignored
+
+    def add_ignored_nick(self, server: str, nick: str) -> bool:
+        """
+        Add a nick to the ignore list for a server (case-insensitive, stored lowercase).
+
+        Returns:
+            True if the nick was added, False if already ignored
+        """
+        if "ignored_nicks" not in self.config:
+            self.config["ignored_nicks"] = {}
+        if server not in self.config["ignored_nicks"]:
+            self.config["ignored_nicks"][server] = []
+        lower_nick = nick.lower()
+        if lower_nick in self.config["ignored_nicks"][server]:
+            return False
+        self.config["ignored_nicks"][server].append(lower_nick)
+        self.save_config()
+        return True
+
+    def remove_ignored_nick(self, server: str, nick: str) -> bool:
+        """
+        Remove a nick from the ignore list for a server (case-insensitive).
+
+        Returns:
+            True if the nick was removed, False if not found
+        """
+        ignored = self.config.get("ignored_nicks", {}).get(server, [])
+        lower_nick = nick.lower()
+        if lower_nick not in ignored:
+            return False
+        ignored.remove(lower_nick)
+        self.save_config()
+        return True
 
 
 if __name__ == "__main__":
