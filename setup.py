@@ -28,7 +28,6 @@ setup(
     python_requires=">=3.7",
     install_requires=[
         "miniirc>=1.9.0",
-        "PyGObject>=3.40.0",
     ],
     extras_require={
         "soundgen": [

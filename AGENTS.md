@@ -8,11 +8,12 @@
 - Packaging artifacts live at the repo root (`setup.py`, `requirements.txt`, `access-irc.spec`, `build.sh`).
 
 ## Build, Test, and Development Commands
-- `python3 -m venv venv && source venv/bin/activate` creates an isolated dev env.
-- `pip install -e .` installs in editable mode for local development.
-- `python3 -m access_irc` runs the app as a module; `access-irc` runs the console entry point.
-- `python3 scripts/generate_sounds.py` regenerates default sound assets (requires `numpy`/`scipy`).
-- `./build.sh` builds the standalone binary using system PyInstaller.
+- `python3 -m venv venv` creates an isolated dev env.
+- `venv/bin/python scripts/install_dependencies.py` installs the project and selects a PyGObject version compatible with the host GObject Introspection API.
+- `venv/bin/python -m access_irc` runs the app as a module; `venv/bin/access-irc` runs the console entry point.
+- `venv/bin/python scripts/generate_sounds.py` regenerates default sound assets (requires `numpy`/`scipy`).
+- `venv/bin/python -m pip install -r requirements-build.txt` installs the build-only tools.
+- `./build.sh` builds with PyInstaller from the project venv; native GTK/GI runtime libraries are still required on the target system.
 
 ## Coding Style & Naming Conventions
 - Python style follows PEP 8: 4-space indentation, `snake_case` for functions/vars, `CapWords` for classes.

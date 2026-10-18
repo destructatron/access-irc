@@ -4,10 +4,8 @@ miniirc>=1.9.0
 # Plugin system
 pluggy>=1.0.0
 
-# GUI - requires system libraries (see README)
-# Note: PyGObject needs libgirepository, GTK3, at-spi2-core, and GStreamer installed via system package manager
-# Sound support requires: gstreamer1.0-plugins-base, gstreamer1.0-plugins-good (system packages)
-PyGObject>=3.40.0
+# PyGObject is installed by scripts/install_dependencies.py. Its version must
+# match the GObject Introspection API available on the host system.
 
 # Spell checking with screen reader accessibility support
 # Uses PANGO_UNDERLINE_ERROR which Orca recognizes as spelling errors

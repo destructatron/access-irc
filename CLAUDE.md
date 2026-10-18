@@ -10,10 +10,10 @@ Access IRC is an accessible GTK 3 IRC client for Linux with screen reader suppor
 
 ```bash
 # Run the application (as a package)
-python3 -m access_irc
+venv/bin/python -m access_irc
 
-# Install dependencies
-pip install -r requirements.txt
+# Install dependencies into the project virtual environment
+venv/bin/python scripts/install_dependencies.py
 ```
 
 ## Testing
@@ -878,7 +878,7 @@ This combination makes the text read-only but fully navigable, which is essentia
 ## System Dependencies
 
 This application requires system packages that cannot be installed via pip:
-- `python3-gi` (PyGObject)
+- GObject Introspection development files (used to build PyGObject in the venv)
 - `gir1.2-gtk-3.0` (GTK 3 introspection)
 - `at-spi2-core` (Accessibility infrastructure)
 

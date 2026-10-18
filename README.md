@@ -41,15 +41,15 @@ Access IRC is designed specifically for users who rely on screen readers. It pro
 **Ubuntu/Debian:**
 ```bash
 sudo apt update
-sudo apt install python3 python3-pip python3-venv \
-  libgirepository1.0-dev libgirepository-2.0-dev gcc libcairo2-dev pkg-config \
+sudo apt install python3 python3-dev python3-pip python3-venv \
+  libgirepository1.0-dev gcc libcairo2-dev pkg-config \
   gir1.2-gtk-3.0 at-spi2-core \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
   libenchant-2-2 hunspell hunspell-en-us aspell libvoikko1 \
   python3-pluggy
 ```
 
-**Note:** Older systems may not have `libgirepository-2.0-dev` available - you can omit it if apt reports it as not found. Newer systems (Ubuntu 24.04+, Debian 13+) require it.
+On newer systems that use `girepository-2.0` (including Ubuntu 24.04+ and Debian 13+), install the distribution's `libgirepository-2.0-dev` package instead of `libgirepository1.0-dev`.
 
 **Fedora:**
 ```bash
@@ -87,32 +87,43 @@ sudo emerge -av dev-libs/gobject-introspection x11-libs/gtk+ \
 git clone https://github.com/destructatron/access-irc.git
 cd access-irc
 
-# Create virtual environment (recommended)
+# Install native dependencies above, then create an isolated Python environment
 python3 -m venv venv
-source venv/bin/activate
 
-# Install the package
-pip install -e .
+# Install the app and Python dependencies. This selects a PyGObject release
+# compatible with the host's GObject Introspection API.
+venv/bin/python scripts/install_dependencies.py
 
 # Generate default sound files (optional, requires numpy and scipy)
-python3 scripts/generate_sounds.py
+venv/bin/python scripts/generate_sounds.py
 
 # Run Access IRC
-access-irc
+venv/bin/access-irc
 ```
 
-**Note:** The `-e` flag installs in editable mode, useful for development. For regular installation, use `pip install .` instead.
+For a regular (non-editable) installation, use `venv/bin/python scripts/install_dependencies.py --wheel`.
+
+### Building a Linux Executable
+
+Install PyInstaller into the same virtual environment as the application, then build:
+
+```bash
+venv/bin/python -m pip install -r requirements-build.txt
+./build.sh
+```
+
+The build script uses `venv/bin/python` directly, checks required imports before building, and writes `dist/access-irc`. The resulting executable still depends on native GTK/GObject Introspection, AT-SPI, GStreamer, and Enchant libraries on the target system; test it on that distribution before sharing it.
 
 ## Usage
 
 ### First Run
 
-1. Start the application: `access-irc`
+1. Start the application: `venv/bin/access-irc`
 2. Go to Settings → Preferences → User to set your nickname and real name
 3. Go to Server → Manage Servers to add IRC servers
 4. Click Connect to join a server
 
-You can also run it as a Python module: `python3 -m access_irc`
+You can also run it as a Python module: `venv/bin/python -m access_irc`
 
 ### Configuration
 
@@ -416,7 +427,7 @@ These Python packages must be available system-wide (not just via pip):
 For development, install in editable mode:
 
 ```bash
-pip install -e .
+venv/bin/python scripts/install_dependencies.py
 ```
 
 This allows you to make changes to the code without reinstalling the package.
@@ -424,7 +435,7 @@ This allows you to make changes to the code without reinstalling the package.
 ## Troubleshooting
 
 **No sound:**
-- Verify GStreamer is working: `python3 -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst"`
+- Verify GStreamer is working: `venv/bin/python -c "import gi; gi.require_version('Gst', '1.0'); from gi.repository import Gst"`
 - Check that sound files exist in one of the search locations (see "For Distribution Packagers" section):
   - System: `/usr/share/access-irc/sounds/`
   - Development: `access_irc/data/sounds/`
@@ -437,7 +448,7 @@ This allows you to make changes to the code without reinstalling the package.
 
 **Import errors:**
 - Ensure system dependencies are installed before creating the virtual environment
-- Reinstall PyGObject: `pip install --force-reinstall PyGObject`
+- Reinstall PyGObject using the API-compatible version: `venv/bin/python scripts/install_dependencies.py`
 
 **Connection failures:**
 - Verify hostname and port are correct

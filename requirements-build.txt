@@ -1,0 +1,2 @@
+# Build-only tools; keep these out of the runtime dependencies.
+PyInstaller>=6.0,<7
